@@ -1,0 +1,181 @@
+import React, { createContext, useState, useContext, useEffect } from 'react';
+
+export const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Add loading state
+
+  // Check for existing login on app start
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const token = localStorage.getItem('authToken');
+      console.log('🔍 Checking for existing auth token:', !!token);
+      
+      if (token) {
+        console.log('🔑 Token found, fetching user data...');
+        await fetchUserData(token);
+      } else {
+        console.log('❌ No token found');
+        setIsLoading(false);
+      }
+    };
+    
+    initializeAuth();
+  }, []);
+
+  const fetchUserData = async (token) => {
+    try {
+      console.log('👤 Fetching user data from /api/auth/me...');
+      const response = await fetch('http://localhost:5000/api/auth/me', {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('📡 Auth response status:', response.status);
+      
+      if (response.ok) {
+        const userData = await response.json();
+        const user = userData.user || userData;
+        
+        console.log('✅ User data received:', user);
+        
+        // Get branch name from multiple possible fields
+        const branchName = user.branchName || user.branch || 'Head Office';
+        
+        const userObj = {
+          id: user.id || user._id,
+          username: user.username,
+          displayName: user.displayName || user.username,
+          branch: branchName,
+          branchName: branchName,
+          branchCode: user.branchCode || 'HO',
+          role: user.role || 'staff'
+        };
+        
+        console.log('👤 Setting user state:', userObj);
+        setUser(userObj);
+        setIsAuthenticated(true);
+        setIsLoading(false);
+      } else {
+        console.error('❌ Auth response not OK:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Auth error details:', errorText);
+        
+        // Only logout if token is actually invalid (401), not for server errors
+        if (response.status === 401) {
+          console.log('🚪 Token invalid, logging out...');
+          logout();
+        } else {
+          console.log('⚠️ Server error, but keeping session');
+          setIsLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error fetching user data:', error);
+      
+      // Don't logout on network errors, keep the session
+      console.log('⚠️ Network error, but keeping token for retry');
+      setIsLoading(false);
+      
+      // Try to use cached user data if available
+      const cachedUserData = localStorage.getItem('cachedUserData');
+      if (cachedUserData) {
+        try {
+          const parsedUser = JSON.parse(cachedUserData);
+          console.log('📋 Using cached user data:', parsedUser);
+          setUser(parsedUser);
+          setIsAuthenticated(true);
+        } catch (parseError) {
+          console.error('❌ Failed to parse cached user data');
+        }
+      }
+    }
+  };
+
+  const login = async (username, password) => {
+    try {
+      console.log('🔐 Attempting login for:', username);
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+      console.log('📡 Login response:', { status: response.status, hasToken: !!data.token });
+
+      if (response.ok && data.token) {
+        // Store only the auth token
+        localStorage.setItem('authToken', data.token);
+        
+        // Get branch name from multiple possible fields
+        const branchName = data.user.branchName || data.user.branch || 'Head Office';
+        
+        const userObj = {
+          id: data.user.id,
+          username: data.user.username,
+          displayName: data.user.displayName,
+          branch: branchName,
+          branchName: branchName,
+          branchCode: data.user.branchCode || 'HO',
+          role: data.user.role
+        };
+        
+        // Cache user data for offline access
+        localStorage.setItem('cachedUserData', JSON.stringify(userObj));
+        
+        setUser(userObj);
+        setIsAuthenticated(true);
+        
+        console.log('✅ Login successful');
+        return true;
+      } else {
+        console.error('❌ Login failed:', data.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      return false;
+    }
+  };
+
+  const logout = () => {
+    console.log('🚪 Logging out...');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('cachedUserData');
+    setUser(null);
+    setIsAuthenticated(false);
+    setIsLoading(false);
+  };
+
+  // Add a method to refresh user data without logging out
+  const refreshUser = async () => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      await fetchUserData(token);
+    }
+  };
+
+  return (
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      isAuthenticated, 
+      isLoading,
+      refreshUser 
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  return useContext(AuthContext);
+};

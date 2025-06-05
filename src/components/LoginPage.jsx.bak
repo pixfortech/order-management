@@ -1,0 +1,55 @@
+// src/components/LoginPage.jsx
+import React, { useEffect, useState, useContext } from 'react';
+import { useAuth } from '../auth/AuthContext'; // ✅ ADD this line
+import { useNavigate } from 'react-router-dom';
+
+const LoginPage = () => {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = () => {
+    const success = login(username, password);
+    if (success) {
+      navigate('/');
+    } else {
+      setError('Invalid credentials');
+    }
+  };
+  
+  const { isAuthenticated } = useAuth();
+
+useEffect(() => {
+  if (isAuthenticated) {
+    navigate('/');
+  }
+}, [isAuthenticated]);
+
+
+  return (
+    <div style={{ maxWidth: '400px', margin: '50px auto', padding: '30px', background: '#fff', borderRadius: '8px', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
+      <h2 style={{ color: '#49488D' }}>Admin Login</h2>
+      <input
+        placeholder="Username"
+        value={username}
+        onChange={e => setUsername(e.target.value)}
+        style={{ width: '100%', padding: '10px', marginBottom: '15px' }}
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        style={{ width: '100%', padding: '10px', marginBottom: '15px' }}
+      />
+      {error && <p style={{ color: 'red', marginBottom: '10px' }}>{error}</p>}
+      <button onClick={handleLogin} style={{ width: '100%', padding: '10px', backgroundColor: '#49488D', color: '#fff', border: 'none', borderRadius: '4px' }}>
+        Login
+      </button>
+    </div>
+  );
+};
+
+export default LoginPage;

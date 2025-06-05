@@ -1,0 +1,54 @@
+// Update your App.js to handle loading state:
+
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import LoginPage from './components/LoginPage';
+import MainLayout from './components/MainLayout';
+
+const AppContent = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show loading spinner while checking authentication
+  if (isLoading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontFamily: 'Poppins, sans-serif'
+      }}>
+        <div>
+          <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🔄</div>
+          <div>Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route 
+        path="/login" 
+        element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />} 
+      />
+      <Route 
+        path="/" 
+        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
+      />
+    </Routes>
+  );
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </AuthProvider>
+  );
+}
+
+export default App;

@@ -1,0 +1,116 @@
+const express = require('express');
+const router = express.Router();
+const Item = require('../models/Item');
+const { auth } = require('../middleware/auth'); // ✅ CORRECT
+
+
+// GET /api/items - Get all items
+router.get('/', auth, async (req, res) => {
+  try {
+    const items = await Item.find({}).sort({ name: 1 });
+    res.json(items);
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+});
+
+// POST /api/items - Create new item
+router.post('/', auth, async (req, res) => {
+  try {
+    const { name, price, unit, vendor, category } = req.body;
+    
+    // Validation
+    if (!name || !price || !vendor) {
+      return res.status(400).json({ message: 'Name, price, and vendor are required' });
+    }
+    
+    if (isNaN(price) || price <= 0) {
+      return res.status(400).json({ message: 'Price must be a positive number' });
+    }
+    
+    const item = new Item({
+      name: name.trim(),
+      price: parseFloat(price),
+      unit: unit || 'pcs',
+      vendor: vendor.trim(),
+      category: category || 'General'
+    });
+    
+    await item.save();
+    
+    console.log('✅ Item created:', item.name);
+    res.status(201).json(item);
+  } catch (error) {
+    console.error('Error creating item:', error);
+    
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Item name already exists' });
+    }
+    
+    res.status(500).json({ message: 'Failed to create item', error: error.message });
+  }
+});
+
+// PUT /api/items/:id - Update item
+router.put('/:id', auth, async (req, res) => {
+  try {
+    const { name, price, unit, vendor, category } = req.body;
+    
+    // Validation
+    if (!name || !price || !vendor) {
+      return res.status(400).json({ message: 'Name, price, and vendor are required' });
+    }
+    
+    if (isNaN(price) || price <= 0) {
+      return res.status(400).json({ message: 'Price must be a positive number' });
+    }
+    
+    const item = await Item.findByIdAndUpdate(
+      req.params.id,
+      {
+        name: name.trim(),
+        price: parseFloat(price),
+        unit: unit || 'pcs',
+        vendor: vendor.trim(),
+        category: category || 'General',
+        updatedAt: new Date()
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+    
+    console.log('✅ Item updated:', item.name);
+    res.json(item);
+  } catch (error) {
+    console.error('Error updating item:', error);
+    
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Item name already exists' });
+    }
+    
+    res.status(500).json({ message: 'Failed to update item', error: error.message });
+  }
+});
+
+// DELETE /api/items/:id - Delete item
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const item = await Item.findByIdAndDelete(req.params.id);
+    
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+    
+    console.log('✅ Item deleted:', item.name);
+    res.json({ message: 'Item deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting item:', error);
+    res.status(500).json({ message: 'Failed to delete item', error: error.message });
+  }
+});
+
+module.exports = router;

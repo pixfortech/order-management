@@ -1,0 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins&display=swap');
+
+* {
+  font-family: 'Poppins', sans-serif;
+}
+
+.order-tabs {
+  padding: 20px;
+}
+
+.filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.filter-group label {
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: #333;
+}
+
+.filter-input {
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.filter-input.short {
+  width: 140px;
+}
+
+.filter-input.medium {
+  width: 180px;
+}
+
+/* 🎯 General Buttons */
+button {
+  padding: 8px 12px;
+  font-size: 15px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background-color: white;
+  border-radius: 5px;
+}
+
+button:hover {
+  background-color: #f1f1f1;
+}
+
+/* 📋 Table Styling */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+thead {
+  background-color: #f3f3f3;
+}
+
+th, td {
+  padding: 10px;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: left;
+  vertical-align: top;
+}
+
+tr:nth-child(even) {
+  background-color: #fcfcfc;
+}
+
+tr:hover {
+  background-color: #f9f9f9;
+}
+
+td button {
+  margin-right: 5px;
+  background: none;
+  border: none;
+  font-size: 15px;
+  cursor: pointer;
+  color: #333;
+}
+
+td button:hover {
+  color: var(--theme-color);
+}
+
+/* 🏷️ Badge Base */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 6px;
+}
+
+/* 🚚 Delivery Tag Colors */
+.delivery-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.badge.tag.today {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.badge.tag.tomorrow {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.badge.tag.upcoming {
+  background-color: #e6f4ea;
+  color: #1b5e20;
+}
+
+.badge.tag.due {
+  background-color: #fdecea;
+  color: #c62828;
+}
+
+/* 📌 Order Status Colors */
+.badge.saved {
+  background-color: #e2e3e5;
+  color: #6c757d;
+}
+
+.badge.held {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.badge.auto-saved {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+/* 📦 Order Progress Colors */
+.badge.progress.packed {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.badge.progress.delivered {
+  background-color: #c3e6cb;
+  color: #155724;
+}
+
+.badge.progress.completed {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.badge.progress.cancelled {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.badge.progress.pending {
+  background-color: #fefefe;
+  color: #6c757d;
+}
+
+/* Expand/Collapse Toggle Button */
+.expand-toggle {
+  margin: 10px 0 15px 0;
+  padding: 6px 14px;
+  font-weight: 500;
+  font-size: 14px;
+  background-color: var(--theme-color);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.expand-toggle:hover {
+  background-color: #3c3b7a;
+}
+
+/* Sub-order row styling */
+.sub-row {
+  background-color: #fafafa;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+/* Hide row when collapsed */
+.sub-row.collapsed {
+  display: none;
+}
+
+.sub-order td {
+  font-size: 14px;
+  color: #444;
+  border-top: 1px dashed #ccc;
+}
+.sub-order td:first-child {
+  font-style: italic;
+}

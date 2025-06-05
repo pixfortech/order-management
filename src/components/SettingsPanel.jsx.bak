@@ -1,0 +1,1518 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../auth/AuthContext';
+import './SettingsPanel.css';
+import './theme.css';
+
+const SettingsPanel = () => {
+  const { user } = useAuth();
+
+  // ===== ALL STATE VARIABLES FIRST =====
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [message, setMessage] = useState('');
+  const [currentUser, setCurrentUser] = useState({
+    id: null,
+    username: null,
+    branch: 'Loading...',
+    branchCode: null,
+    role: 'staff',
+    displayName: null
+  });
+
+  // Pagination States
+  const [usersPagination, setUsersPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 10,
+    totalItems: 0
+  });
+  const [itemsPagination, setItemsPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 10,
+    totalItems: 0
+  });
+  const [occasionsPagination, setOccasionsPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 10,
+    totalItems: 0
+  });
+
+  // Brand Details State
+  const [brandDetails, setBrandDetails] = useState({
+    name: '',
+    displayName: '',
+    address: '',
+    gst: '',
+    email: '',
+    phone: '',
+    logo: null
+  });
+  const [originalBrandDetails, setOriginalBrandDetails] = useState({});
+
+  // Theme State
+  const [themeColor, setThemeColor] = useState('#49488D');
+  const [originalThemeColor, setOriginalThemeColor] = useState('#49488D');
+
+  // Users Management State
+  const [users, setUsers] = useState([]);
+  const [branches, setBranches] = useState({});
+  const [newUser, setNewUser] = useState({ 
+    username: '', 
+    password: '', 
+    branch: '', 
+    role: 'staff',
+    displayName: ''
+  });
+  const [editingUserId, setEditingUserId] = useState(null);
+
+  // Items Management State
+  const [items, setItems] = useState([]);
+  const [newItem, setNewItem] = useState({ 
+    name: '', 
+    price: '', 
+    unit: 'pcs', 
+    vendor: '',
+    category: 'General'
+  });
+  const [editingItemId, setEditingItemId] = useState(null);
+
+  // Occasions Management State
+  const [occasions, setOccasions] = useState([]);
+  const [newOccasion, setNewOccasion] = useState({
+    name: '',
+    code: ''
+  });
+  const [editingOccasionId, setEditingOccasionId] = useState(null);
+
+  // Logo Upload State
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+
+  // Validation State
+  const [validationErrors, setValidationErrors] = useState({});
+  
+  // ===== HELPER FUNCTIONS =====
+  const showMessage = (text, type = 'info') => {
+    setMessage(text);
+    setTimeout(() => setMessage(''), 5000);
+  };
+
+  // Pagination helper functions
+  const getPaginatedData = (data, pagination) => {
+    const startIndex = (pagination.currentPage - 1) * pagination.itemsPerPage;
+    const endIndex = startIndex + pagination.itemsPerPage;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (totalItems, itemsPerPage) => {
+    return Math.ceil(totalItems / itemsPerPage);
+  };
+
+  const handlePageChange = (type, newPage) => {
+    if (type === 'users') {
+      setUsersPagination(prev => ({ ...prev, currentPage: newPage }));
+    } else if (type === 'items') {
+      setItemsPagination(prev => ({ ...prev, currentPage: newPage }));
+    } else if (type === 'occasions') {
+      setOccasionsPagination(prev => ({ ...prev, currentPage: newPage }));
+    }
+  };
+
+  const handleItemsPerPageChange = (type, itemsPerPage) => {
+    if (type === 'users') {
+      setUsersPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+    } else if (type === 'items') {
+      setItemsPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+    } else if (type === 'occasions') {
+      setOccasionsPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+    }
+  };
+
+  const normalizeBranchName = (branch, availableBranches = {}) => {
+    if (!branch) return Object.keys(availableBranches)[0] || 'Head Office';
+    
+    // First, check if branch exists directly
+    if (availableBranches[branch]) return branch;
+    
+    // Create a mapping for common branch name variations
+    const branchMap = {};
+    Object.keys(availableBranches).forEach(branchName => {
+      branchMap[branchName.toLowerCase()] = branchName;
+      branchMap[branchName.toLowerCase().replace(/\s/g, '')] = branchName;
+      branchMap[branchName.toLowerCase().replace(/\s+/g, '-')] = branchName;
+      branchMap[branchName.toLowerCase().replace(/\s+/g, '_')] = branchName;
+    });
+    
+    // Try normalized versions
+    const normalized = branchMap[branch.toLowerCase()] || 
+                      branchMap[branch.toLowerCase().replace(/\s/g, '')] ||
+                      branch;
+    
+    return normalized;
+  };
+
+  const isValidBranch = (branch, availableBranches = {}) => {
+    if (!branch || !availableBranches) return false;
+    
+    const normalizedBranch = normalizeBranchName(branch, availableBranches);
+    return Object.keys(availableBranches).includes(normalizedBranch);
+  };
+
+  const validateBrandDetails = () => {
+  const errors = {};
+  
+  if (!brandDetails.name?.trim()) errors.name = 'Brand name is required';
+  if (!brandDetails.displayName?.trim()) errors.displayName = 'Display name is required';
+  
+  // Phone validation - must be exactly 10 digits
+  if (!brandDetails.phone?.trim()) {
+    errors.phone = 'Phone number is required';
+  } else if (!/^[0-9]{10}$/.test(brandDetails.phone.trim())) {
+    errors.phone = 'Phone number must be exactly 10 digits';
+  }
+  
+  // Email validation
+  if (brandDetails.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(brandDetails.email)) {
+    errors.email = 'Invalid email format';
+  }
+  
+  setValidationErrors(errors);
+  return Object.keys(errors).length === 0;
+};
+
+  const validateUser = () => {
+    const errors = {};
+    
+    if (!newUser.username?.trim()) errors.username = 'Username is required';
+    if (!newUser.password?.trim() && !editingUserId) errors.password = 'Password is required';
+    if (!newUser.branch?.trim()) errors.branch = 'Branch is required';
+    if (!newUser.displayName?.trim()) errors.displayName = 'Display name is required';
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateItem = () => {
+    const errors = {};
+    
+    if (!newItem.name?.trim()) errors.itemName = 'Item name is required';
+    if (!newItem.price || isNaN(newItem.price) || newItem.price <= 0) errors.itemPrice = 'Valid price is required';
+    if (!newItem.vendor?.trim()) errors.itemVendor = 'Vendor is required';
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateOccasion = () => {
+    const errors = {};
+    
+    if (!newOccasion.name?.trim()) errors.occasionName = 'Occasion name is required';
+    if (!newOccasion.code?.trim()) errors.occasionCode = 'Occasion code is required';
+    if (newOccasion.code && newOccasion.code.length !== 3) errors.occasionCode = 'Code must be exactly 3 characters';
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  
+  // ===== API FUNCTIONS =====
+
+  const fetchMasterData = async () => {
+    try {
+      setIsLoadingData(true);
+      const token = localStorage.getItem('authToken');
+
+      console.log('🔍 Fetching settings data...');
+
+      // Fetch branches first to have the mapping available
+      try {
+        console.log('🏢 Fetching branches...');
+        const branchesResponse = await fetch('http://localhost:5000/api/branches', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (branchesResponse.ok) {
+          const contentType = branchesResponse.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const branchesData = await branchesResponse.json();
+            console.log('🏢 Raw branches data:', branchesData);
+            
+            const branchesObj = {};
+            if (Array.isArray(branchesData)) {
+              branchesData.forEach(branch => {
+                branchesObj[branch.branchName] = branch.branchCode;
+              });
+            }
+            
+            console.log('🏢 Processed branches object:', branchesObj);
+            setBranches(branchesObj);
+          } else {
+            console.warn('⚠️ Branches API returned non-JSON response');
+            setBranches({});
+          }
+        } else {
+          console.warn('⚠️ Branches API response not OK:', branchesResponse.status);
+          setBranches({});
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch branches:', error);
+        setBranches({});
+      }
+
+      // Fetch user profile
+      console.log('👤 Fetching user profile...');
+      try {
+        const userResponse = await fetch('http://localhost:5000/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (userResponse.ok) {
+          const contentType = userResponse.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const userDataResponse = await userResponse.json();
+            const userData = userDataResponse.user || userDataResponse;
+            
+            console.log('👤 Raw user data:', userData);
+            
+            // Get the branch name - try different possible field names
+            const userBranchName = userData.branchName || 
+                                  userData.branch || 
+                                  userData.branchId || 
+                                  'Head Office';
+            
+            console.log('🏢 User branch from API:', userBranchName);
+            
+            setCurrentUser({
+              id: userData.id || userData._id,
+              username: userData.username,
+              branch: userBranchName,
+              branchCode: userData.branchCode,
+              role: userData.role,
+              displayName: userData.displayName || userData.username
+            });
+          } else {
+            console.warn('⚠️ User API returned non-JSON response');
+          }
+        } else {
+          console.warn('⚠️ User API response not OK:', userResponse.status);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch user data:', error);
+      }
+
+      // Fetch brand details
+      try {
+        console.log('🏷️ Fetching brand details...');
+        const brandResponse = await fetch('http://localhost:5000/api/brand', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (brandResponse.ok) {
+          const contentType = brandResponse.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const brandData = await brandResponse.json();
+            console.log('🏷️ Brand data:', brandData);
+            setBrandDetails(brandData);
+            setOriginalBrandDetails(brandData);
+            if (brandData.logo) {
+              setLogoPreview(brandData.logo);
+            }
+          } else {
+            console.warn('⚠️ Brand API returned non-JSON response');
+            setBrandDetails({ displayName: 'Brand', name: 'Brand' });
+          }
+        } else {
+          console.warn('⚠️ Brand API response not OK:', brandResponse.status);
+          setBrandDetails({ displayName: 'Brand', name: 'Brand' });
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch brand data:', error);
+        setBrandDetails({ displayName: 'Brand', name: 'Brand' });
+      }
+
+      // Fetch theme settings
+      try {
+        console.log('🎨 Fetching theme settings...');
+        const themeResponse = await fetch('http://localhost:5000/api/theme', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (themeResponse.ok) {
+          const themeData = await themeResponse.json();
+          console.log('🎨 Theme data:', themeData);
+          setThemeColor(themeData.color || '#49488D');
+          setOriginalThemeColor(themeData.color || '#49488D');
+          document.documentElement.style.setProperty('--theme-color', themeData.color || '#49488D');
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch theme data:', error);
+      }
+
+      // Fetch users (for all roles, but show management options only for admin)
+      try {
+        console.log('👥 Fetching users...');
+        const usersResponse = await fetch('http://localhost:5000/api/users', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (usersResponse.ok) {
+          const usersData = await usersResponse.json();
+          console.log('👥 Users data:', usersData);
+          setUsers(usersData || []);
+          setUsersPagination(prev => ({ ...prev, totalItems: (usersData || []).length }));
+        } else {
+          console.warn('⚠️ Users API response not OK:', usersResponse.status);
+          setUsers([]);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch users:', error);
+        setUsers([]);
+      }
+
+      // Fetch items
+      try {
+        console.log('📦 Fetching items...');
+        const itemsResponse = await fetch('http://localhost:5000/api/items', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (itemsResponse.ok) {
+          const itemsData = await itemsResponse.json();
+          console.log('📦 Items data length:', itemsData.length);
+          setItems(itemsData || []);
+          setItemsPagination(prev => ({ ...prev, totalItems: (itemsData || []).length }));
+        } else {
+          console.warn('⚠️ Items API response not OK:', itemsResponse.status);
+          setItems([]);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch items:', error);
+        setItems([]);
+      }
+
+      // Fetch occasions
+      try {
+        console.log('🎉 Fetching occasions...');
+        const occasionsResponse = await fetch('http://localhost:5000/api/occasions', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (occasionsResponse.ok) {
+          const occasionsData = await occasionsResponse.json();
+          console.log('🎉 Occasions data:', occasionsData);
+          setOccasions(occasionsData || []);
+          setOccasionsPagination(prev => ({ ...prev, totalItems: (occasionsData || []).length }));
+        } else {
+          console.warn('⚠️ Occasions API response not OK:', occasionsResponse.status);
+          setOccasions([]);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch occasions:', error);
+        setOccasions([]);
+      }
+
+      console.log('✅ Settings data fetch completed');
+      setIsLoadingData(false);
+      
+      // If no branches were loaded, use fallback data for development
+      if (Object.keys(branches).length === 0) {
+        console.log('🔧 Using fallback branch data for development');
+        const fallbackBranches = {
+          'Head Office': 'HO',
+          'Misti Hub': 'MH',
+          'Chowringhee': 'CW',
+          'Beadon Street': 'BS',
+          'Baranagar': 'BN'
+        };
+        setBranches(fallbackBranches);
+      }
+      
+      // If no current user branch set, use Head Office
+      if (!currentUser.branch || currentUser.branch === 'Loading...') {
+        setCurrentUser(prev => ({
+          ...prev,
+          branch: 'Head Office',
+          role: 'admin',
+          displayName: 'System Administrator',
+          username: 'admin'
+        }));
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fetching settings data:', error);
+      showMessage('⚠️ Failed to load settings data. Using fallback data for development.', 'error');
+      setIsLoadingData(false);
+      
+      // Set fallback data
+      setBranches({
+        'Head Office': 'HO',
+        'Misti Hub': 'MH',
+        'Chowringhee': 'CW',
+        'Beadon Street': 'BS',
+        'Baranagar': 'BN'
+      });
+      setCurrentUser({
+        id: 'fallback-user',
+        username: 'admin',
+        branch: 'Head Office',
+        branchCode: 'HO',
+        role: 'admin',
+        displayName: 'System Administrator'
+      });
+      setBrandDetails({ displayName: 'Brand Name', name: 'Brand' });
+    }
+  };
+  
+  // Replace your saveBrandDetails function with this enhanced version:
+
+const saveBrandDetails = async () => {
+  if (!validateBrandDetails()) {
+    showMessage('❌ Please correct the errors before saving.', 'error');
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('authToken');
+    console.log('💾 Saving brand details:', brandDetails);
+    
+    const response = await fetch('http://localhost:5000/api/brand', {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(brandDetails)
+    });
+
+    console.log('📡 Brand save response status:', response.status);
+
+    if (response.ok) {
+      const updatedBrand = await response.json();
+      console.log('✅ Brand updated:', updatedBrand);
+      setBrandDetails(updatedBrand);
+      setOriginalBrandDetails(updatedBrand);
+      
+      showMessage('✅ Brand details saved successfully!', 'success');
+      
+      // Trigger a custom event to notify MainLayout to update header
+      window.dispatchEvent(new CustomEvent('brandUpdated', { 
+        detail: updatedBrand 
+      }));
+      
+      // Also reload the page after 1 second to ensure all components update
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      
+    } else {
+      const errorText = await response.text();
+      console.error('❌ Brand save error response:', errorText);
+      throw new Error(`Failed to save brand details: ${response.status} ${errorText}`);
+    }
+  } catch (error) {
+    console.error('❌ Error saving brand details:', error);
+    showMessage(`❌ Failed to save brand details: ${error.message}`, 'error');
+  }
+};
+
+  const saveThemeColor = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      console.log('🎨 Saving theme color:', themeColor);
+      
+      const response = await fetch('http://localhost:5000/api/theme', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ color: themeColor })
+      });
+
+      console.log('📡 Theme save response status:', response.status);
+
+      if (response.ok) {
+        setOriginalThemeColor(themeColor);
+        document.documentElement.style.setProperty('--theme-color', themeColor);
+        showMessage('✅ Theme color saved successfully!', 'success');
+        
+        // Trigger a custom event to notify other components
+        window.dispatchEvent(new CustomEvent('themeUpdated', { detail: { color: themeColor } }));
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Theme save error response:', errorText);
+        throw new Error(`Failed to save theme color: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      console.error('❌ Error saving theme color:', error);
+      showMessage(`❌ Failed to save theme color: ${error.message}`, 'error');
+    }
+  };
+
+  const saveUser = async () => {
+    if (!validateUser()) {
+      showMessage('❌ Please correct the errors before saving.', 'error');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const method = editingUserId ? 'PUT' : 'POST';
+      const url = editingUserId 
+        ? `http://localhost:5000/api/users/${editingUserId}`
+        : 'http://localhost:5000/api/users';
+
+      const userData = { ...newUser };
+      if (editingUserId && !userData.password) {
+        delete userData.password; // Don't update password if not provided
+      }
+
+      console.log('👤 Saving user:', userData);
+
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      });
+
+      console.log('📡 User save response status:', response.status);
+
+      if (response.ok) {
+        const savedUser = await response.json();
+        console.log('✅ User saved:', savedUser);
+        
+        if (editingUserId) {
+          setUsers(users.map(u => u._id === editingUserId ? savedUser : u));
+          showMessage('✅ User updated successfully!', 'success');
+          setEditingUserId(null);
+        } else {
+          setUsers([...users, savedUser]);
+          showMessage('✅ User created successfully!', 'success');
+        }
+        
+        setNewUser({ username: '', password: '', branch: '', role: 'staff', displayName: '' });
+        setValidationErrors({});
+      } else {
+        const errorData = await response.json();
+        console.error('❌ User save error:', errorData);
+        throw new Error(errorData.message || 'Failed to save user');
+      }
+    } catch (error) {
+      console.error('❌ Error saving user:', error);
+      showMessage(`❌ ${error.message}`, 'error');
+    }
+  };
+
+  const deleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user?')) return;
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setUsers(users.filter(u => u._id !== userId));
+        showMessage('✅ User deleted successfully!', 'success');
+      } else {
+        throw new Error('Failed to delete user');
+      }
+    } catch (error) {
+      console.error('❌ Error deleting user:', error);
+      showMessage('❌ Failed to delete user. Please try again.', 'error');
+    }
+  };
+  
+  const saveItem = async () => {
+    if (!validateItem()) {
+      showMessage('❌ Please correct the errors before saving.', 'error');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const method = editingItemId ? 'PUT' : 'POST';
+      const url = editingItemId 
+        ? `http://localhost:5000/api/items/${editingItemId}`
+        : 'http://localhost:5000/api/items';
+
+      console.log('📦 Saving item:', newItem);
+
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newItem)
+      });
+
+      if (response.ok) {
+        const savedItem = await response.json();
+        
+        if (editingItemId) {
+          setItems(items.map(i => i._id === editingItemId ? savedItem : i));
+          showMessage('✅ Item updated successfully!', 'success');
+          setEditingItemId(null);
+        } else {
+          setItems([...items, savedItem]);
+          showMessage('✅ Item created successfully!', 'success');
+        }
+        
+        setNewItem({ name: '', price: '', unit: 'pcs', vendor: '', category: 'General' });
+        setValidationErrors({});
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Failed to save item: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      console.error('❌ Error saving item:', error);
+      showMessage(`❌ Failed to save item: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteItem = async (itemId) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) return;
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:5000/api/items/${itemId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setItems(items.filter(i => i._id !== itemId));
+        showMessage('✅ Item deleted successfully!', 'success');
+      } else {
+        throw new Error('Failed to delete item');
+      }
+    } catch (error) {
+      console.error('❌ Error deleting item:', error);
+      showMessage('❌ Failed to delete item. Please try again.', 'error');
+    }
+  };
+
+  const saveOccasion = async () => {
+    if (!validateOccasion()) {
+      showMessage('❌ Please correct the errors before saving.', 'error');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const method = editingOccasionId ? 'PUT' : 'POST';
+      const url = editingOccasionId 
+        ? `http://localhost:5000/api/occasions/${editingOccasionId}`
+        : 'http://localhost:5000/api/occasions';
+
+      console.log('🎉 Saving occasion:', newOccasion);
+
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newOccasion)
+      });
+
+      if (response.ok) {
+        const savedOccasion = await response.json();
+        
+        if (editingOccasionId) {
+          setOccasions(occasions.map(o => o._id === editingOccasionId ? savedOccasion : o));
+          showMessage('✅ Occasion updated successfully!', 'success');
+          setEditingOccasionId(null);
+        } else {
+          setOccasions([...occasions, savedOccasion]);
+          showMessage('✅ Occasion created successfully!', 'success');
+        }
+        
+        setNewOccasion({ name: '', code: '' });
+        setValidationErrors({});
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Failed to save occasion: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      console.error('❌ Error saving occasion:', error);
+      showMessage(`❌ Failed to save occasion: ${error.message}`, 'error');
+    }
+  };
+
+  const deleteOccasion = async (occasionId) => {
+    if (!window.confirm('Are you sure you want to delete this occasion?')) return;
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:5000/api/occasions/${occasionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        setOccasions(occasions.filter(o => o._id !== occasionId));
+        showMessage('✅ Occasion deleted successfully!', 'success');
+      } else {
+        throw new Error('Failed to delete occasion');
+      }
+    } catch (error) {
+      console.error('❌ Error deleting occasion:', error);
+      showMessage('❌ Failed to delete occasion. Please try again.', 'error');
+    }
+  };
+  
+  // ===== EVENT HANDLERS =====
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        showMessage('❌ Image size should be less than 5MB', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result;
+        setLogoPreview(base64String);
+        setBrandDetails({
+          ...brandDetails,
+          logo: base64String
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditUser = (user) => {
+    setNewUser({
+      username: user.username,
+      password: '', // Don't prefill password
+      branch: user.branchName || user.branch,
+      role: user.role,
+      displayName: user.displayName || user.username
+    });
+    setEditingUserId(user._id);
+    setValidationErrors({});
+  };
+
+  const handleEditItem = (item) => {
+    setNewItem({
+      name: item.name,
+      price: item.price,
+      unit: item.unit,
+      vendor: item.vendor,
+      category: item.category || 'General'
+    });
+    setEditingItemId(item._id);
+    setValidationErrors({});
+  };
+
+  const handleEditOccasion = (occasion) => {
+    setNewOccasion({
+      name: occasion.name,
+      code: occasion.code
+    });
+    setEditingOccasionId(occasion._id);
+    setValidationErrors({});
+  };
+
+  const cancelEdit = () => {
+    setNewUser({ username: '', password: '', branch: '', role: 'staff', displayName: '' });
+    setNewItem({ name: '', price: '', unit: 'pcs', vendor: '', category: 'General' });
+    setNewOccasion({ name: '', code: '' });
+    setEditingUserId(null);
+    setEditingItemId(null);
+    setEditingOccasionId(null);
+    setValidationErrors({});
+  };
+  
+  // ===== EFFECTS =====
+  useEffect(() => {
+    fetchMasterData();
+  }, []);
+
+  useEffect(() => {
+    document.title = `Settings - ${brandDetails.displayName || 'Brand'} Order Management`;
+  }, [brandDetails.displayName]);
+
+  // Update current user branch when branches are loaded
+  useEffect(() => {
+    if (Object.keys(branches).length > 0 && currentUser.branch && currentUser.branch !== 'Loading...') {
+      const normalizedBranch = normalizeBranchName(currentUser.branch, branches);
+      if (normalizedBranch !== currentUser.branch) {
+        console.log('🏢 Normalizing branch from:', currentUser.branch, 'to:', normalizedBranch);
+        setCurrentUser(prev => ({
+          ...prev,
+          branch: normalizedBranch
+        }));
+      }
+    }
+  }, [branches, currentUser.branch]);
+  
+  // ===== RENDER =====
+  
+  // Pagination Component
+  const PaginationComponent = ({ type, data, pagination, children }) => {
+    const totalPages = getTotalPages(pagination.totalItems, pagination.itemsPerPage);
+    const paginatedData = getPaginatedData(data, pagination);
+    
+    const renderPageNumbers = () => {
+      const pages = [];
+      const maxVisiblePages = 5;
+      let startPage = Math.max(1, pagination.currentPage - Math.floor(maxVisiblePages / 2));
+      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+      
+      if (endPage - startPage + 1 < maxVisiblePages) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+      }
+      
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(
+          <button
+            key={i}
+            className={`pagination-button ${i === pagination.currentPage ? 'active' : ''}`}
+            onClick={() => handlePageChange(type, i)}
+          >
+            {i}
+          </button>
+        );
+      }
+      return pages;
+    };
+    
+    return (
+      <div>
+        {children(paginatedData)}
+        
+        {pagination.totalItems > 0 && (
+          <div className="pagination-container">
+            <div className="pagination-info">
+              Showing {((pagination.currentPage - 1) * pagination.itemsPerPage) + 1} to{' '}
+              {Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)} of{' '}
+              {pagination.totalItems} entries
+            </div>
+            
+            <div className="pagination-controls">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span>Show:</span>
+                <select
+                  className="pagination-select"
+                  value={pagination.itemsPerPage}
+                  onChange={(e) => handleItemsPerPageChange(type, e.target.value)}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                </select>
+              </div>
+              
+              <div className="pagination-buttons">
+                <button
+                  className="pagination-button"
+                  onClick={() => handlePageChange(type, 1)}
+                  disabled={pagination.currentPage === 1}
+                >
+                  First
+                </button>
+                <button
+                  className="pagination-button"
+                  onClick={() => handlePageChange(type, pagination.currentPage - 1)}
+                  disabled={pagination.currentPage === 1}
+                >
+                  Previous
+                </button>
+                
+                {renderPageNumbers()}
+                
+                <button
+                  className="pagination-button"
+                  onClick={() => handlePageChange(type, pagination.currentPage + 1)}
+                  disabled={pagination.currentPage === totalPages}
+                >
+                  Next
+                </button>
+                <button
+                  className="pagination-button"
+                  onClick={() => handlePageChange(type, totalPages)}
+                  disabled={pagination.currentPage === totalPages}
+                >
+                  Last
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="form-wrapper">
+      {isLoadingData && (
+        <div className="loading-message">
+          🔄 Loading settings data...
+        </div>
+      )}
+
+      {!isLoadingData && !isValidBranch(currentUser.branch, branches) && (
+        <div className="warning-message">
+          ⚠️ Warning: Invalid branch detected ({currentUser.branch}). Available branches: {Object.keys(branches).join(', ')}. Please contact administrator.
+        </div>
+      )}
+
+      <div className="card">
+        <h2>
+          ⚙️ Settings - {brandDetails.displayName || 'Loading...'}
+          <div className="user-info-badge">
+            👤 {currentUser.displayName || currentUser.username} ({currentUser.role})
+          </div>
+        </h2>
+
+        {message && (
+          <div className={message.startsWith('✅') ? 'success' : 'error'}>
+            {message}
+          </div>
+        )}
+      </div>
+	  
+	  {/* Brand Details Section */}
+      <div className="card">
+        <h3>🏢 Brand Details</h3>
+        <div className="form-grid">
+          <div className="form-group">
+            <label>Brand Name<span className="required">*</span></label>
+            <input 
+              value={brandDetails.name} 
+              onChange={(e) => setBrandDetails({ ...brandDetails, name: e.target.value })}
+              className={validationErrors.name ? 'error-field' : ''}
+              placeholder="Enter brand name"
+            />
+            {validationErrors.name && <div className="error-message">❌ {validationErrors.name}</div>}
+          </div>
+
+          <div className="form-group">
+            <label>Display Name<span className="required">*</span></label>
+            <input 
+              value={brandDetails.displayName} 
+              onChange={(e) => setBrandDetails({ ...brandDetails, displayName: e.target.value })}
+              className={validationErrors.displayName ? 'error-field' : ''}
+              placeholder="Enter display name"
+            />
+            {validationErrors.displayName && <div className="error-message">❌ {validationErrors.displayName}</div>}
+          </div>
+		  
+<div className="form-group">
+  <label>Phone Number<span className="required">*</span></label>
+  <input 
+    value={brandDetails.phone} 
+    onChange={(e) => {
+      const value = e.target.value;
+      // Allow only numbers and limit to 10 digits
+      const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 10);
+      
+      setBrandDetails({ ...brandDetails, phone: numbersOnly });
+      
+      // Real-time validation - clear errors immediately when valid
+      if (numbersOnly.length === 10) {
+        // Valid phone number - clear error
+        setValidationErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.phone;
+          return newErrors;
+        });
+      } else if (numbersOnly.length > 0) {
+        // Invalid length - show error
+        setValidationErrors(prev => ({
+          ...prev,
+          phone: 'Phone number must be exactly 10 digits'
+        }));
+      } else {
+        // Empty field - show required error
+        setValidationErrors(prev => ({
+          ...prev,
+          phone: 'Phone number is required'
+        }));
+      }
+    }}
+    className={validationErrors.phone ? 'error-field' : ''}
+    placeholder="Enter 10-digit phone number"
+    maxLength={10}
+  />
+  {validationErrors.phone && <div className="error-message">❌ {validationErrors.phone}</div>}
+</div>
+
+          <div className="form-group">
+            <label>Email</label>
+            <input 
+              type="email"
+              value={brandDetails.email} 
+              onChange={(e) => setBrandDetails({ ...brandDetails, email: e.target.value })}
+              className={validationErrors.email ? 'error-field' : ''}
+              placeholder="Enter email address"
+            />
+            {validationErrors.email && <div className="error-message">❌ {validationErrors.email}</div>}
+          </div>
+
+          <div className="form-group">
+            <label>GST Number</label>
+            <input 
+              value={brandDetails.gst} 
+              onChange={(e) => setBrandDetails({ ...brandDetails, gst: e.target.value })}
+              placeholder="Enter GST number"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Brand Logo</label>
+            {logoPreview && (
+              <img src={logoPreview} alt="Brand Logo Preview" className="logo-preview" />
+            )}
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={handleLogoUpload}
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Address</label>
+          <textarea 
+            value={brandDetails.address} 
+            onChange={(e) => setBrandDetails({ ...brandDetails, address: e.target.value })}
+            placeholder="Enter complete address"
+            rows="3"
+          />
+        </div>
+
+        <div className="button-group">
+          <button onClick={saveBrandDetails}>💾 Save Brand Details</button>
+        </div>
+      </div>
+
+      {/* Theme Settings Section */}
+      <div className="card">
+        <h3>🎨 Theme Settings</h3>
+        <div className="form-grid">
+          <div className="form-group">
+            <label>Theme Color</label>
+            <div className="color-picker-group">
+              <input 
+                type="color" 
+                value={themeColor} 
+                onChange={(e) => setThemeColor(e.target.value)}
+              />
+              <input 
+                type="text" 
+                value={themeColor} 
+                onChange={(e) => setThemeColor(e.target.value)}
+                placeholder="#49488D"
+              />
+            </div>
+          </div>
+        </div>
+        
+        <div className="button-group">
+          <button onClick={saveThemeColor}>💾 Save Theme Color</button>
+        </div>
+      </div>
+	  
+	  {/* Users Management Section - Admin Only */}
+      {currentUser.role === 'admin' && (
+        <div className="card">
+          <h3>👥 User Management</h3>
+          
+          {/* Add/Edit User Form */}
+          <div style={{ marginBottom: '30px' }}>
+            <h4>{editingUserId ? '✏️ Edit User' : '➕ Add New User'}</h4>
+            <div className="form-grid-3">
+              <div className="form-group">
+                <label>Username<span className="required">*</span></label>
+                <input 
+                  value={newUser.username} 
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  className={validationErrors.username ? 'error-field' : ''}
+                  placeholder="Enter username"
+                />
+                {validationErrors.username && <div className="error-message">❌ {validationErrors.username}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Password{!editingUserId && <span className="required">*</span>}</label>
+                <input 
+                  type="password"
+                  value={newUser.password} 
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  className={validationErrors.password ? 'error-field' : ''}
+                  placeholder={editingUserId ? "Leave blank to keep current" : "Enter password"}
+                />
+                {validationErrors.password && <div className="error-message">❌ {validationErrors.password}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Display Name<span className="required">*</span></label>
+                <input 
+                  value={newUser.displayName} 
+                  onChange={(e) => setNewUser({ ...newUser, displayName: e.target.value })}
+                  className={validationErrors.displayName ? 'error-field' : ''}
+                  placeholder="Enter display name"
+                />
+                {validationErrors.displayName && <div className="error-message">❌ {validationErrors.displayName}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Branch<span className="required">*</span></label>
+                <select 
+                  value={newUser.branch} 
+                  onChange={(e) => setNewUser({ ...newUser, branch: e.target.value })}
+                  className={validationErrors.branch ? 'error-field' : ''}
+                >
+                  <option value="">Select Branch</option>
+                  {Object.keys(branches).map((branchName) => (
+                    <option key={branchName} value={branchName}>{branchName}</option>
+                  ))}
+                </select>
+                {validationErrors.branch && <div className="error-message">❌ {validationErrors.branch}</div>}
+              </div>
+
+              <div className="form-group">
+                <label>Role</label>
+                <select 
+                  value={newUser.role} 
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                >
+                  <option value="staff">Staff</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="button-group">
+              <button onClick={saveUser}>💾 {editingUserId ? 'Update User' : 'Add User'}</button>
+              {editingUserId && (
+                <button onClick={cancelEdit} className="btn-secondary">❌ Cancel</button>
+              )}
+            </div>
+          </div>
+
+          {/* Users List */}
+          <div>
+            <h4>📋 Current Users ({users.length})</h4>
+            <PaginationComponent type="users" data={users} pagination={usersPagination}>
+              {(paginatedUsers) => (
+                paginatedUsers.length > 0 ? (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Username</th>
+                        <th>Display Name</th>
+                        <th>Branch</th>
+                        <th>Role</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedUsers.map((user) => (
+                        <tr key={user._id}>
+                          <td>{user.username}</td>
+                          <td>{user.displayName || user.username}</td>
+                          <td>{user.branchName || user.branch}</td>
+                          <td style={{ textTransform: 'capitalize' }}>{user.role}</td>
+                          <td>
+                            <button 
+                              onClick={() => handleEditUser(user)}
+                              className="btn-secondary"
+                              style={{ fontSize: '12px', padding: '6px 10px', marginRight: '5px' }}
+                            >
+                              ✏️ Edit
+                            </button>
+                            {user._id !== currentUser.id && (
+                              <button 
+                                onClick={() => deleteUser(user._id)}
+                                className="btn-danger"
+                                style={{ fontSize: '12px', padding: '6px 10px' }}
+                              >
+                                🗑️ Delete
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p>No users found. Try refreshing the page.</p>
+                )
+              )}
+            </PaginationComponent>
+          </div>
+        </div>
+      )}
+	  
+	  {/* Items Management Section */}
+      <div className="card">
+        <h3>🍬 Items Management</h3>
+        
+        {/* Add/Edit Item Form */}
+        <div style={{ marginBottom: '30px' }}>
+          <h4>{editingItemId ? '✏️ Edit Item' : '➕ Add New Item'}</h4>
+          <div className="form-grid-3">
+            <div className="form-group">
+              <label>Item Name<span className="required">*</span></label>
+              <input 
+                value={newItem.name} 
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                className={validationErrors.itemName ? 'error-field' : ''}
+                placeholder="Enter item name"
+              />
+              {validationErrors.itemName && <div className="error-message">❌ {validationErrors.itemName}</div>}
+            </div>
+
+            <div className="form-group">
+              <label>Price<span className="required">*</span></label>
+              <input 
+                type="number"
+                step="0.01"
+                value={newItem.price} 
+                onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                className={validationErrors.itemPrice ? 'error-field' : ''}
+                placeholder="Enter price"
+              />
+              {validationErrors.itemPrice && <div className="error-message">❌ {validationErrors.itemPrice}</div>}
+            </div>
+
+            <div className="form-group">
+              <label>Unit</label>
+              <select 
+                value={newItem.unit} 
+                onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+              >
+                <option value="pcs">Pieces</option>
+                <option value="kg">Kilogram</option>
+                <option value="g">Gram</option>
+                <option value="dozen">Dozen</option>
+                <option value="box">Box</option>
+                <option value="pack">Pack</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Vendor<span className="required">*</span></label>
+              <input 
+                value={newItem.vendor} 
+                onChange={(e) => setNewItem({ ...newItem, vendor: e.target.value })}
+                className={validationErrors.itemVendor ? 'error-field' : ''}
+                placeholder="Enter vendor name"
+              />
+              {validationErrors.itemVendor && <div className="error-message">❌ {validationErrors.itemVendor}</div>}
+            </div>
+
+            <div className="form-group">
+              <label>Category</label>
+              <input 
+                value={newItem.category} 
+                onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                placeholder="Enter category"
+              />
+            </div>
+          </div>
+
+          <div className="button-group">
+            <button onClick={saveItem}>💾 {editingItemId ? 'Update Item' : 'Add Item'}</button>
+            {editingItemId && (
+              <button onClick={cancelEdit} className="btn-secondary">❌ Cancel</button>
+            )}
+          </div>
+        </div>
+
+        {/* Items List */}
+        <div>
+          <h4>📋 Current Items ({items.length})</h4>
+          <PaginationComponent type="items" data={items} pagination={itemsPagination}>
+            {(paginatedItems) => (
+              paginatedItems.length > 0 ? (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Item Name</th>
+                      <th>Price</th>
+                      <th>Unit</th>
+                      <th>Vendor</th>
+                      <th>Category</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedItems.map((item) => (
+                      <tr key={item._id}>
+                        <td>{item.name}</td>
+                        <td>₹{item.price}</td>
+                        <td>{item.unit}</td>
+                        <td>{item.vendor}</td>
+                        <td>{item.category || 'General'}</td>
+                        <td>
+                          <button 
+                            onClick={() => handleEditItem(item)}
+                            className="btn-secondary"
+                            style={{ fontSize: '12px', padding: '6px 10px', marginRight: '5px' }}
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button 
+                            onClick={() => deleteItem(item._id)}
+                            className="btn-danger"
+                            style={{ fontSize: '12px', padding: '6px 10px' }}
+                          >
+                            🗑️ Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p>No items found. Add some items to get started.</p>
+              )
+            )}
+          </PaginationComponent>
+        </div>
+      </div>
+	  
+	  {/* Occasions Management Section */}
+      <div className="card">
+        <h3>🎉 Occasions Management</h3>
+        
+        {/* Add/Edit Occasion Form */}
+        <div style={{ marginBottom: '30px' }}>
+          <h4>{editingOccasionId ? '✏️ Edit Occasion' : '➕ Add New Occasion'}</h4>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Occasion Name<span className="required">*</span></label>
+              <input 
+                value={newOccasion.name} 
+                onChange={(e) => setNewOccasion({ ...newOccasion, name: e.target.value })}
+                className={validationErrors.occasionName ? 'error-field' : ''}
+                placeholder="Enter occasion name"
+              />
+              {validationErrors.occasionName && <div className="error-message">❌ {validationErrors.occasionName}</div>}
+            </div>
+
+            <div className="form-group">
+              <label>Code (3 characters)<span className="required">*</span></label>
+              <input 
+                value={newOccasion.code} 
+                onChange={(e) => setNewOccasion({ ...newOccasion, code: e.target.value.toUpperCase() })}
+                className={validationErrors.occasionCode ? 'error-field' : ''}
+                placeholder="Enter 3-letter code"
+                maxLength={3}
+              />
+              {validationErrors.occasionCode && <div className="error-message">❌ {validationErrors.occasionCode}</div>}
+            </div>
+          </div>
+
+          <div className="button-group">
+            <button onClick={saveOccasion}>💾 {editingOccasionId ? 'Update Occasion' : 'Add Occasion'}</button>
+            {editingOccasionId && (
+              <button onClick={cancelEdit} className="btn-secondary">❌ Cancel</button>
+            )}
+          </div>
+        </div>
+
+        {/* Occasions List */}
+        <div>
+          <h4>📋 Current Occasions ({occasions.length})</h4>
+          <PaginationComponent type="occasions" data={occasions} pagination={occasionsPagination}>
+            {(paginatedOccasions) => (
+              paginatedOccasions.length > 0 ? (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Occasion Name</th>
+                      <th>Code</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedOccasions.map((occasion) => (
+                      <tr key={occasion._id}>
+                        <td>{occasion.name}</td>
+                        <td><strong>{occasion.code}</strong></td>
+                        <td>
+                          <button 
+                            onClick={() => handleEditOccasion(occasion)}
+                            className="btn-secondary"
+                            style={{ fontSize: '12px', padding: '6px 10px', marginRight: '5px' }}
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button 
+                            onClick={() => deleteOccasion(occasion._id)}
+                            className="btn-danger"
+                            style={{ fontSize: '12px', padding: '6px 10px' }}
+                          >
+                            🗑️ Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p>No occasions found. Add some occasions to get started.</p>
+              )
+            )}
+          </PaginationComponent>
+        </div>
+      </div>
+
+      {/* System Information Section */}
+      <div className="card">
+        <h3>ℹ️ System Information</h3>
+        <div className="system-info-grid">
+          <div className="system-info-item">
+            <strong>Current User:</strong><br />
+            {currentUser.displayName} ({currentUser.username})
+          </div>
+          <div className="system-info-item">
+            <strong>User Role:</strong><br />
+            {currentUser.role}
+          </div>
+          <div className="system-info-item">
+            <strong>Current Branch:</strong><br />
+            {currentUser.branch}
+          </div>
+          <div className="system-info-item">
+            <strong>Branch Code:</strong><br />
+            {branches[currentUser.branch] || 'N/A'}
+          </div>
+          <div className="system-info-item">
+            <strong>Total Items:</strong><br />
+            {items.length}
+          </div>
+          <div className="system-info-item">
+            <strong>Total Occasions:</strong><br />
+            {occasions.length}
+          </div>
+          <div className="system-info-item">
+            <strong>Total Users:</strong><br />
+            {users.length}
+          </div>
+          <div className="system-info-item">
+            <strong>Total Branches:</strong><br />
+            {Object.keys(branches).length}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SettingsPanel;

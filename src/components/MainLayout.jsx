@@ -1,0 +1,145 @@
+import React, { useRef, useState, useEffect } from 'react';
+import OrderForm from './OrderForm';
+import OrderTabs from './OrderTabs';
+import OrderSummary from './OrderSummary'; // Add this import
+import { useAuth } from '../auth/AuthContext';
+import SettingsPanel from './SettingsPanel';
+
+const MainLayout = () => {
+  // Brand data state
+  const [brandData, setBrandData] = useState({ displayName: 'Loading...' });
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Component state
+  const [activeTab, setActiveTab] = useState('order');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const formRef = useRef();
+
+  const { user, logout } = useAuth();
+  const isAdmin = user?.role === 'admin';
+
+  // Fetch brand data
+  useEffect(() => {
+    const fetchBrandData = async () => {
+      try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('http://localhost:5000/api/brand', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        setBrandData(data);
+      } catch (error) {
+        console.error('Failed to fetch brand data:', error);
+        setBrandData({ displayName: 'Brand' });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchBrandData();
+  }, []);
+
+  // Listen for brand and theme updates
+  useEffect(() => {
+    const handleBrandUpdate = (event) => {
+      console.log('🔄 Brand updated event received:', event.detail);
+      setBrandData(event.detail);
+      setIsLoading(false);
+    };
+    
+    const handleThemeUpdate = (event) => {
+      console.log('🎨 Theme updated event received:', event.detail);
+      document.documentElement.style.setProperty('--theme-color', event.detail.color);
+    };
+    
+    window.addEventListener('brandUpdated', handleBrandUpdate);
+    window.addEventListener('themeUpdated', handleThemeUpdate);
+    
+    return () => {
+      window.removeEventListener('brandUpdated', handleBrandUpdate);
+      window.removeEventListener('themeUpdated', handleThemeUpdate);
+    };
+  }, []);
+
+  const tabButtonStyle = (tab) => ({
+    padding: '10px 20px',
+    border: '2px solid #49488D',
+    borderRadius: '8px',
+    marginRight: '10px',
+    backgroundColor: activeTab === tab ? '#49488D' : '#fff',
+    color: activeTab === tab ? '#fff' : '#49488D',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+  });
+
+  return (
+    <div style={{ fontFamily: 'Poppins, sans-serif', background: '#f9f9ff', minHeight: '100vh' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#e7e7f9',
+        padding: '10px 20px'
+      }}>
+        <div style={{ fontWeight: 'bold', color: '#49488D' }}>
+          🧁 {isLoading ? 'Loading...' : brandData.displayName}
+        </div>
+        <div style={{ fontWeight: 'bold', fontSize: '18px', color: '#49488D' }}>
+          {isLoading ? 'Loading...' : brandData.displayName} Order Management - {user?.branchName || user?.branch || 'Head Office'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span style={{ marginRight: '10px', color: '#49488D' }}>👤 {user?.username}</span>
+          <button onClick={logout} style={{ background: '#Ea5454', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}>
+            🚪 Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Updated Navigation - Role-based tabs */}
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0', background: '#f3f3fb' }}>
+        {/* Current Order - Always visible for all users */}
+        <button onClick={() => setActiveTab('order')} style={tabButtonStyle('order')}>
+          📝 Current Order
+        </button>
+        
+        {/* Orders - Visible for all users */}
+        <button onClick={() => setActiveTab('orders')} style={tabButtonStyle('orders')}>
+          📋 Orders
+        </button>
+        
+        {/* Summary - Visible for all users */}
+        <button onClick={() => setActiveTab('summary')} style={tabButtonStyle('summary')}>
+          📊 Summary
+        </button>
+        
+        {/* Settings - Only visible for admin */}
+        {isAdmin && (
+          <button onClick={() => setActiveTab('settings')} style={tabButtonStyle('settings')}>
+            ⚙️ Settings
+          </button>
+        )}
+      </div>
+
+      {/* Updated Content Area - Role-based content */}
+      <div style={{ padding: '20px' }}>
+        {/* Current Order - Always accessible */}
+        {activeTab === 'order' && (
+          <OrderForm selectedOrder={selectedOrder} setSelectedOrder={setSelectedOrder} ref={formRef} />
+        )}
+        
+        {/* Orders - Always accessible */}
+        {activeTab === 'orders' && (
+          <OrderTabs setSelectedOrder={setSelectedOrder} switchToFormTab={() => setActiveTab('order')} />
+        )}
+        
+        {/* Summary - Now using OrderSummary component */}
+        {activeTab === 'summary' && <OrderSummary />}
+        
+        {/* Settings - Only accessible by admin */}
+        {activeTab === 'settings' && isAdmin && <SettingsPanel />}
+      </div>
+    </div>
+  );
+};
+
+export default MainLayout;

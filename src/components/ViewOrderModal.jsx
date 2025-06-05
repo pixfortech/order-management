@@ -1,0 +1,243 @@
+import React, { useState } from 'react';
+import './ViewOrderModal.css';
+
+const displayName = localStorage.getItem('displayName') || '{displayName}';
+const ViewOrderModal = ({ order, onClose }) => {
+  const [selectedBoxIndex, setSelectedBoxIndex] = useState('all');
+  const [printMode, setPrintMode] = useState('combined');
+
+  const brandDetails = {
+    logo: '/logo.png',
+    address: '123/2, Acharya Prafulla Chandra Road, Kolkata-700006',
+    phone: '+91 90730 96322',
+  };
+
+  if (!order) return null;
+
+  const totalBoxDiscount = order.boxes.reduce((acc, box) => acc + (box.discount || 0), 0);
+  const extraDiscount = order.extraDiscount?.value || 0;
+  const totalSavings = totalBoxDiscount + extraDiscount;
+
+  const calculatedGrandTotal = order.boxes.reduce((sum, box) => {
+    const itemSum = box.items.reduce((s, i) => s + ((i.qty || 0) * (i.price || 0)), 0);
+    return sum + (box.total ?? (itemSum - (box.discount || 0)));
+  }, 0) - extraDiscount;
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB'); // DD/MM/YYYY
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    const boxHtml = (box, idx, isLastBox, isSeparateMode) => {
+      const multipleBoxes = order.boxes.length > 1;
+      const boxLabel = multipleBoxes ? `-${String.fromCharCode(65 + idx)}` : '';
+      const subtotal = box.items.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
+      const boxDiscount = box.discount || 0;
+      const boxTotal = box.total ?? (subtotal - boxDiscount);
+
+      return `
+        <div class="box-summary">
+          <h4>Box ${idx + 1} ${multipleBoxes ? `(${order.orderNumber}${boxLabel})` : ''}</h4>
+          <p><strong>Box Count:</strong> ${box.boxCount || 1}</p>
+          <table>
+            <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Total</th></tr></thead>
+            <tbody>
+              ${box.items.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.qty}</td>
+                  <td>${item.unit || '-'}</td>
+                  <td>₹${parseFloat(item.price ?? 0).toFixed(2)}</td>
+                  <td>₹${(parseFloat(item.qty ?? 0) * parseFloat(item.price ?? 0)).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ${boxDiscount > 0 ? `<p class="totals">Box Discount: ₹${boxDiscount}</p>` : ''}
+          <p class="totals">Box Total: ₹${boxTotal.toFixed(2)}</p>
+          ${isSeparateMode && isLastBox
+            ? `
+              <hr/>
+              <p class="totals">Advance Paid: ₹${order.advancePaid || 0}</p>
+              ${extraDiscount > 0 ? `<p class="totals">Extra Discount: ₹${extraDiscount}</p>` : ''}
+              <p class="totals">Grand Total: ₹${order.grandTotal ?? calculatedGrandTotal.toFixed(2)}</p>
+              ${totalSavings > 0 ? `<p class="totals">Total Savings: ₹${totalSavings.toFixed(2)}</p>` : ''}
+            `
+            : ''}
+        </div>
+      `;
+    };
+
+    const bodyContent = `
+      <html>
+      <head>
+        <title>Print Order</title>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+        <style>
+          body { font-family: Poppins, sans-serif; padding: 20px; }
+          .brand { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
+          .brand img { height: 50px; }
+          .brand-info { font-size: 14px; }
+          .order-meta-row { display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 14px; row-gap: 6px; margin: 6px 0; }
+          .order-meta-row > div { flex: 1 1 240px; display: flex; gap: 6px; align-items: center; }
+          .delivery-highlight { padding: 2px 8px; border: 1px solid #000; border-radius: 4px; font-weight: 600; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+          th, td { border: 1px solid #ccc; padding: 6px 8px; }
+          .box-summary { margin-top: 20px; border: 1px solid #ccc; padding: 10px 15px; page-break-inside: avoid; }
+          .totals { text-align: right; font-weight: 600; margin-top: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="brand">
+          <img src="${brandDetails.logo}" />
+          <div class="brand-info">
+            <div><strong>Address:</strong> ${brandDetails.address}</div>
+            <div><strong>Phone:</strong> ${brandDetails.phone}</div>
+          </div>
+        </div>
+
+        <h2>Order No: ${order.orderNumber}</h2>
+        <div class="order-meta-row">
+          <div><strong>Customer:</strong> ${order.customerName}</div>
+          <div><strong>Phone:</strong> ${order.phone}</div>
+          ${order.email ? `<div><strong>Email:</strong> ${order.email}</div>` : ''}
+        </div>
+        <div class="order-meta-row">
+          <div><strong>Occasion:</strong> ${order.occasion}</div>
+          <div><strong>Order Date:</strong> ${formatDate(order.orderDate)}</div>
+          <div><strong>Delivery Date:</strong> <span class="delivery-highlight">${formatDate(order.deliveryDate)}</span></div>
+          <div><strong>Delivery Time:</strong> <span class="delivery-highlight">${order.deliveryTime}</span></div>
+        </div>
+
+        ${
+          printMode === 'combined'
+            ? order.boxes.map((box, idx) => boxHtml(box, idx, false, false)).join('')
+            : order.boxes.map((box, idx) => boxHtml(box, idx, idx === order.boxes.length - 1, true)).join('<div style="page-break-after: always;"></div>')
+        }
+
+        ${
+          printMode === 'combined'
+            ? `
+              <hr/>
+              <p class="totals">Advance Paid: ₹${order.advancePaid || 0}</p>
+              ${extraDiscount > 0 ? `<p class="totals">Extra Discount: ₹${extraDiscount}</p>` : ''}
+              <p class="totals">Grand Total: ₹${order.grandTotal ?? calculatedGrandTotal.toFixed(2)}</p>
+              ${totalSavings > 0 ? `<p class="totals">Total Savings: ₹${totalSavings.toFixed(2)}</p>` : ''}
+            `
+            : ''
+        }
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(bodyContent);
+    printWindow.document.close();
+
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+      onClose();
+    }, 500);
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <button className="close-button" onClick={onClose}>✖</button>
+        <div className="modal-header">
+          <h2>Order Summary</h2>
+          <button onClick={handlePrint} className="print-btn">🖨️ Print</button>
+        </div>
+
+        <div className="brand">
+          <img src={brandDetails.logo} alt="Logo" />
+          <div className="brand-info">
+            <div><strong>Address:</strong> {brandDetails.address}</div>
+            <div><strong>Phone:</strong> {brandDetails.phone}</div>
+          </div>
+        </div>
+
+        <h3 style={{ fontWeight: 700 }}>Order No: {order.orderNumber}</h3>
+
+        <div className="order-meta-row">
+          <div><b>Customer:</b> {order.customerName}</div>
+          <div><b>Phone:</b> {order.phone}</div>
+          {order.email && <div><b>Email:</b> {order.email}</div>}
+        </div>
+
+        <div className="order-meta-row">
+          <div><b>Occasion:</b> {order.occasion}</div>
+          <div><b>Order Date:</b> {formatDate(order.orderDate)}</div>
+          <div><b>Delivery Date:</b> <span className="delivery-highlight">{formatDate(order.deliveryDate)}</span></div>
+          <div><b>Delivery Time:</b> <span className="delivery-highlight">{order.deliveryTime}</span></div>
+        </div>
+
+        <div className="box-selector">
+          <label>📦 View: </label>
+          <select value={selectedBoxIndex} onChange={(e) => setSelectedBoxIndex(e.target.value)}>
+            <option value="all">View All Boxes</option>
+            {order.boxes.map((_, idx) => (
+              <option key={idx} value={idx}>Box {idx + 1}</option>
+            ))}
+          </select>
+
+          <label style={{ marginLeft: '20px' }}>🖨️ Print Mode: </label>
+          <select value={printMode} onChange={(e) => setPrintMode(e.target.value)}>
+            <option value="combined">All Boxes in One Page</option>
+            <option value="separate">Each Box on Separate Page</option>
+          </select>
+        </div>
+
+        {(selectedBoxIndex === 'all' ? order.boxes : [order.boxes[selectedBoxIndex]]).map((box, idx) => {
+          const actualIdx = selectedBoxIndex === 'all' ? idx : parseInt(selectedBoxIndex);
+          const multiple = order.boxes.length > 1;
+          const boxLabel = multiple ? ` (${order.orderNumber}-${String.fromCharCode(65 + actualIdx)})` : '';
+          const subtotal = box.items.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
+          const boxDiscount = box.discount || 0;
+          const boxTotal = box.total ?? (subtotal - boxDiscount);
+
+          return (
+            <div key={actualIdx} className="box-summary">
+              <h4>Box {actualIdx + 1}{multiple ? boxLabel : ''}</h4>
+              <p><strong>Box Count:</strong> {box.boxCount || 1}</p>
+              <table className="item-table">
+                <thead>
+                  <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Total</th></tr>
+                </thead>
+                <tbody>
+                  {box.items.map((item, itemIdx) => (
+                    <tr key={itemIdx}>
+                      <td>{item.name}</td>
+                      <td>{item.qty}</td>
+                      <td>{item.unit || '-'}</td>
+                      <td>₹{parseFloat(item.price ?? 0).toFixed(2)}</td>
+                      <td>₹{(parseFloat(item.qty ?? 0) * parseFloat(item.price ?? 0)).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {boxDiscount > 0 && <p className="totals">Box Discount: ₹{boxDiscount}</p>}
+              <p className="totals">Box Total: ₹{boxTotal.toFixed(2)}</p>
+            </div>
+          );
+        })}
+
+        {selectedBoxIndex === 'all' && (
+          <>
+            <hr />
+            <p className="totals">Advance Paid: ₹{order.advancePaid || 0}</p>
+            {extraDiscount > 0 && <p className="totals">Extra Discount: ₹{extraDiscount}</p>}
+            <p className="totals">Grand Total: ₹{order.grandTotal ?? calculatedGrandTotal.toFixed(2)}</p>
+            {totalSavings > 0 && <p className="totals">Total Savings: ₹{totalSavings.toFixed(2)}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ViewOrderModal;

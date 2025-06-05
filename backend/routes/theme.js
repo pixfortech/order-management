@@ -1,0 +1,74 @@
+const express = require('express');
+const router = express.Router();
+const mongoose = require('mongoose'); // Use mongoose instead of connectDB
+const { auth } = require('../middleware/auth');
+
+// Theme collection helper - use mongoose connection
+const getThemeCollection = () => {
+  return mongoose.connection.db.collection('theme');
+};
+
+// Initialize theme with default data if doesn't exist
+const initializeTheme = async () => {
+  try {
+    const collection = getThemeCollection();
+    const existingTheme = await collection.findOne({});
+    
+    if (!existingTheme) {
+      const defaultTheme = {
+        color: '#49488D',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      await collection.insertOne(defaultTheme);
+      console.log('✅ Default theme created');
+      return defaultTheme;
+    }
+    
+    return existingTheme;
+  } catch (error) {
+    console.error('❌ Error initializing theme:', error);
+    throw error;
+  }
+};
+
+// GET /api/theme - Get theme settings
+router.get('/', auth, async (req, res) => {
+  try {
+    const theme = await initializeTheme();
+    res.json(theme);
+  } catch (error) {
+    console.error('Error fetching theme:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+});
+
+// PUT /api/theme - Update theme settings
+router.put('/', auth, async (req, res) => {
+  try {
+    const collection = getThemeCollection();
+    
+    const updateData = {
+      color: req.body.color,
+      updatedAt: new Date()
+    };
+    
+    const result = await collection.findOneAndUpdate(
+      {}, // Find any theme document
+      { $set: updateData },
+      { 
+        upsert: true,
+        returnDocument: 'after'
+      }
+    );
+    
+    console.log('✅ Theme updated successfully');
+    res.json(result.value || result);
+  } catch (error) {
+    console.error('Error updating theme:', error);
+    res.status(500).json({ message: 'Failed to update theme', error: error.message });
+  }
+});
+
+module.exports = router;

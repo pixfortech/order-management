@@ -1,0 +1,30 @@
+// orderApi.js
+export const saveOrder = async (orderData, orderId = null) => {
+  const baseUrl = 'http://localhost:5000'; // your backend
+  const method = orderId ? 'PUT' : 'POST';
+  const url = orderId 
+    ? `${baseUrl}/api/orders/${orderId}` 
+    : `${baseUrl}/api/orders`;
+
+  const response = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(orderData),
+  });
+
+  const contentType = response.headers.get("content-type");
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text);
+  }
+
+  if (!contentType || !contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error("Expected JSON but got: " + text);
+  }
+
+  return await response.json();
+};

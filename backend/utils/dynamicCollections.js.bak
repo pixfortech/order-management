@@ -1,0 +1,96 @@
+const mongoose = require('mongoose');
+
+const createOrderSchema = () => new mongoose.Schema({
+  orderNumber: { 
+    type: String, 
+    required: true, 
+    unique: true 
+  },
+  customerName: { 
+    type: String, 
+    required: true 
+  },
+  phone: { 
+    type: String, 
+    required: true 
+  },
+  address: String,
+  email: String,
+  pincode: String,
+  city: String,
+  state: String,
+  branch: String,
+  branchCode: String,
+  createdBy: String,
+  occasion: String,
+  orderDate: Date,
+  deliveryDate: Date,
+  deliveryTime: String,
+  boxes: Array,
+  notes: String,
+  extraDiscount: {
+    value: { type: Number, default: 0 },
+    type: { type: String, enum: ['value', 'percentage'], default: 'value' }
+  },
+  advancePaid: { type: Number, default: 0 },
+  totalBoxCount: Number,
+  grandTotal: Number,
+  balance: Number,
+  status: { 
+    type: String, 
+    enum: ['saved', 'held', 'completed', 'cancelled'], 
+    default: 'saved' 
+  },
+}, { 
+  timestamps: true 
+});
+
+const createCustomerSchema = () => new mongoose.Schema({
+  name: { 
+    type: String, 
+    required: true 
+  },
+  phone: { 
+    type: String, 
+    required: true 
+  },
+  email: String,
+  address: String,
+  pincode: String,
+  city: String,
+  state: String,
+  branch: String,
+  branchCode: String,
+  totalOrders: { type: Number, default: 0 },
+  totalSpent: { type: Number, default: 0 },
+  lastOrderDate: Date,
+}, { 
+  timestamps: true 
+});
+
+const getOrderModel = (branchCode) => {
+  const collectionName = `orders_${branchCode.toLowerCase()}`;
+  
+  if (mongoose.models[collectionName]) {
+    return mongoose.models[collectionName];
+  }
+  
+  return mongoose.model(collectionName, createOrderSchema(), collectionName);
+};
+
+const getCustomerModel = (branchCode) => {
+  const collectionName = `customers_${branchCode.toLowerCase()}`;
+  
+  if (mongoose.models[collectionName]) {
+    return mongoose.models[collectionName];
+  }
+  
+  return mongoose.model(collectionName, createCustomerSchema(), collectionName);
+};
+
+module.exports = { 
+  getOrderModel, 
+  getCustomerModel,
+  createOrderSchema,
+  createCustomerSchema
+};

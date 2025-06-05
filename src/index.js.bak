@@ -1,0 +1,21 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext'; // ✅ correct
+
+// Apply saved theme color on app load
+const savedTheme = localStorage.getItem('themeColor');
+if (savedTheme) {
+  document.documentElement.style.setProperty('--theme-color', savedTheme);
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <BrowserRouter>
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  </BrowserRouter>
+);

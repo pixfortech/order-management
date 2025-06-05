@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #f5f6fa;
+  margin: 0;
+  padding: 30px;
+  color: #222;
+}
+
+h2 {
+  font-weight: 600;
+  font-size: 1.25rem;
+  margin-bottom: 20px;
+}
+
+.card {
+  background-color: white;
+  padding: 24px;
+  margin-bottom: 30px;
+  border-radius: 12px;
+  box-shadow: 0px 2px 8px rgba(0,0,0,0.04);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+input, select, textarea {
+  padding: 10px 14px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: border-color 0.3s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #49488D;
+  outline: none;
+}
+
+.required {
+  color: red;
+  margin-left: 3px;
+}
+
+button {
+  background-color: #49488D;
+  color: white;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #383771;
+}
+
+button.btn-secondary {
+  background-color: #ccc;
+  color: #333;
+}
+
+.tab-container {
+  max-width: 1200px;
+  margin: auto;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
