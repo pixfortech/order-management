@@ -6,6 +6,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true); // Add loading state
+  const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 
   // Check for existing login on app start
   useEffect(() => {
@@ -28,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   const fetchUserData = async (token) => {
     try {
       console.log('👤 Fetching user data from /api/auth/me...');
-      const response = await fetch('http://localhost:5000/api/auth/me', {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -99,7 +101,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       console.log('🔐 Attempting login for:', username);
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
