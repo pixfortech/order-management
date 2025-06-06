@@ -28,6 +28,7 @@ const LoginForm = ({ onLogin }) => {
         localStorage.setItem('displayName', data.user.displayName);
         localStorage.setItem('userBranch', data.user.branchName);
         localStorage.setItem('userRole', data.user.role);
+		localStorage.setItem('userBranchCode', data.user.branchCode);
         
         onLogin(data.user);
       } else {
