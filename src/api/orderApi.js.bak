@@ -1,30 +1,39 @@
-// orderApi.js
-export const saveOrder = async (orderData, orderId = null) => {
-  const baseUrl = 'http://localhost:5000'; // your backend
-  const method = orderId ? 'PUT' : 'POST';
-  const url = orderId 
-    ? `${baseUrl}/api/orders/${orderId}` 
-    : `${baseUrl}/api/orders`;
+const API_BASE = 'http://localhost:5000/api';
 
-  const response = await fetch(url, {
+export const saveOrder = async (orderData, editingOrderId = null) => {
+  const branchCode = orderData.branchCode.toLowerCase();
+  
+  const endpoint = editingOrderId 
+    ? `${API_BASE}/orders/${branchCode}/${editingOrderId}`
+    : `${API_BASE}/orders/${branchCode}`;
+    
+  const method = editingOrderId ? 'PUT' : 'POST';
+  
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch(endpoint, {
     method,
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify(orderData),
   });
-
-  const contentType = response.headers.get("content-type");
-
+  
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text);
+    throw new Error(`Failed to save order: ${response.statusText}`);
   }
+  
+  return response.json();
+};
 
-  if (!contentType || !contentType.includes("application/json")) {
-    const text = await response.text();
-    throw new Error("Expected JSON but got: " + text);
-  }
-
-  return await response.json();
+export const getLastOrderNumber = async (prefix) => {
+  const token = localStorage.getItem('authToken');
+  const response = await fetch(`${API_BASE}/orders/last-number/${prefix}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  
+  return response.json();
 };

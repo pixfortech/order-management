@@ -3,9 +3,11 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+
+// Only import auth middleware where needed
 const { auth } = require('../middleware/auth');
 
-// POST /api/auth/login
+// POST /api/auth/login - NO AUTH MIDDLEWARE NEEDED
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -36,9 +38,9 @@ router.post('/login', async (req, res) => {
         username: user.username,
         displayName: user.displayName || user.username,
         role: user.role,
-        branch: user.branch || user.branchName,
-        branchName: user.branch || user.branchName,
-        branchCode: user.branchCode
+        branch: user.branch || user.branchName || 'Head Office',
+        branchName: user.branch || user.branchName || 'Head Office',
+        branchCode: user.branchCode || 'HO'
       }
     });
   } catch (error) {
@@ -47,15 +49,20 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me - Get current user info
+// GET /api/auth/me - REQUIRES AUTH MIDDLEWARE
 router.get('/me', auth, async (req, res) => {
   try {
+    console.log('🔍 /me endpoint hit, user from token:', req.user);
+    
     const user = await User.findById(req.user.userId).select('-password');
     
     if (!user) {
+      console.log('❌ User not found in database:', req.user.userId);
       return res.status(404).json({ message: 'User not found' });
     }
 
+    console.log('✅ User found:', user.username);
+    
     res.json({
       user: {
         id: user._id,
@@ -73,7 +80,7 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
-// POST /api/auth/register (for creating initial admin user)
+// POST /api/auth/register - NO AUTH MIDDLEWARE NEEDED
 router.post('/register', async (req, res) => {
   try {
     const { username, password, role, branch, displayName } = req.body;
