@@ -99,53 +99,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (username, password) => {
-    try {
-      console.log('🔐 Attempting login for:', username);
-      const response = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+  try {
+    const response = await axios.post(`${process.env.REACT_APP_API_URL}/login`, {
+      username,
+      password,
+    });
 
-      const data = await response.json();
-      console.log('📡 Login response:', { status: response.status, hasToken: !!data.token });
+    const user = response.data.user;
+    setAuthState({ user, isAuthenticated: true });
 
-      if (response.ok && data.token) {
-        // Store only the auth token
-        localStorage.setItem('authToken', data.token);
-        
-        // Get branch name from multiple possible fields
-        const branchName = data.user.branchName || data.user.branch || 'Head Office';
-        
-        const userObj = {
-          id: data.user.id,
-          username: data.user.username,
-          displayName: data.user.displayName,
-          branch: branchName,
-          branchName: branchName,
-          branchCode: data.user.branchCode || 'HO',
-          role: data.user.role
-        };
-        
-        // Cache user data for offline access
-        localStorage.setItem('cachedUserData', JSON.stringify(userObj));
-        
-        setUser(userObj);
-        setIsAuthenticated(true);
-        
-        console.log('✅ Login successful');
-        return true;
-      } else {
-        console.error('❌ Login failed:', data.message);
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Login error:', error);
-      return false;
-    }
-  };
+    return true;
+  } catch (error) {
+    console.error("Login error:", error.response?.data || error.message);
+    return false;
+  }
+};
 
   const logout = () => {
     console.log('🚪 Logging out...');
