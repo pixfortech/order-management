@@ -1,28 +1,40 @@
-// createTestUser.js
 require("dotenv").config();
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const User = require("./models/User"); // Make sure path is correct
+const User = require("./models/User");
 
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(async () => {
-  const hashedPassword = await bcrypt.hash("admin", 10);
+const createTestUser = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
 
-  const user = await User.create({
-    username: "admin",
-    password: hashedPassword,
-    email: "test@example.com",
-    role: "admin",
-    displayName: "Test Admin",
-    branchName: "Test Branch",
-    branchCode: "TB",
-    isActive: true,
-  });
+    const existing = await User.findOne({ username: "admin" });
+    if (existing) {
+      await User.deleteOne({ username: "admin" });
+      console.log("Previous 'admin' user deleted");
+    }
 
-  console.log("✅ Admin user created:", user.username);
-  mongoose.disconnect();
-}).catch((err) => {
-  console.error("❌ MongoDB connection error:", err);
-});
+    const hashedPassword = await bcrypt.hash("admin", 10);
+
+    const newUser = new User({
+      username: "admin",
+      password: hashedPassword,
+      email: "ganguramonline@gmail.com",
+      role: "admin",
+      branch: "Head Office",
+      branchName: "Head Office",
+      branchCode: "HO",
+      displayName: "System Administrator",
+      isActive: true,
+    });
+
+    await newUser.save();
+    console.log("✅ Admin user created successfully");
+
+    mongoose.disconnect();
+  } catch (err) {
+    console.error("🔥 Error:", err.message);
+    mongoose.disconnect();
+  }
+};
+
+createTestUser();

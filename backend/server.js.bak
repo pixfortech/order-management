@@ -36,7 +36,7 @@ connectDB();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001'], // Add your frontend URLs
+  origin: 'https://order-management-six-liart.vercel.app',
   credentials: true
 }));
 
