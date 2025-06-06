@@ -1,0 +1,28 @@
+// createTestUser.js
+require("dotenv").config();
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const User = require("./models/User"); // Make sure path is correct
+
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(async () => {
+  const hashedPassword = await bcrypt.hash("admin", 10);
+
+  const user = await User.create({
+    username: "admin",
+    password: hashedPassword,
+    email: "test@example.com",
+    role: "admin",
+    displayName: "Test Admin",
+    branchName: "Test Branch",
+    branchCode: "TB",
+    isActive: true,
+  });
+
+  console.log("✅ Admin user created:", user.username);
+  mongoose.disconnect();
+}).catch((err) => {
+  console.error("❌ MongoDB connection error:", err);
+});

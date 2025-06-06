@@ -62,6 +62,10 @@ router.get('/me', auth, async (req, res) => {
     }
 
     console.log('✅ User found:', user.username);
+	
+	console.log("Input password:", req.body.password);
+console.log("Stored hash:", user.password);
+
     
     res.json({
       user: {
