@@ -9,20 +9,20 @@ const auth = require('../middleware/auth');
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    console.log('Login Attempt:', { username, password });
 
-    // Find user
     const user = await User.findOne({ username });
     if (!user) {
+      console.log('User not found for:', username);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      console.log('Incorrect password for:', username);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Generate JWT token
     const token = jwt.sign(
       { userId: user._id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
@@ -46,6 +46,7 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
 
 // GET /api/auth/me - Get current user info
 router.get('/me', auth, async (req, res) => {
