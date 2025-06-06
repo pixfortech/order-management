@@ -15,12 +15,18 @@ router.post('/login', async (req, res) => {
     // Find user
     const user = await User.findOne({ username });
     if (!user) {
+		console.log("User found:", user.username);
+console.log("Password match:", isMatch);
+
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+		console.log("User found:", user.username);
+console.log("Password match:", isMatch);
+
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -58,6 +64,9 @@ router.get('/me', auth, async (req, res) => {
     
     if (!user) {
       console.log('❌ User not found in database:', req.user.userId);
+	  console.log("User found:", user.username);
+console.log("Password match:", isMatch);
+
       return res.status(404).json({ message: 'User not found' });
     }
 
@@ -92,6 +101,9 @@ router.post('/register', async (req, res) => {
     // Check if user already exists
     const existingUser = await User.findOne({ username });
     if (existingUser) {
+		console.log("User found:", user.username);
+console.log("Password match:", isMatch);
+
       return res.status(400).json({ message: 'Username already exists' });
     }
 
