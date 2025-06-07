@@ -4,7 +4,6 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const { auth: authenticateToken } = require("../middleware/auth"); // ← Fix this line
 
-
 const router = express.Router();
 
 // ✅ POST /api/auth/login

@@ -5,9 +5,34 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Add loading state
-  const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Better API URL handling for different environments
+  const getApiUrl = () => {
+    // Check if we have an environment variable
+    if (process.env.REACT_APP_API_URL) {
+      return process.env.REACT_APP_API_URL;
+    }
+    
+    // Fallback based on current environment
+    if (window.location.hostname === 'localhost') {
+      return 'http://localhost:5000';
+    }
+    
+    // For production, you'll need to set this to your Render URL
+    return 'https://order-management-fbre.onrender.com'; // Actual Render URL
+  };
+  
+  const API_BASE = getApiUrl();
 
+  // Add debugging for API URL
+  useEffect(() => {
+    console.log('🌐 Current environment:', {
+      hostname: window.location.hostname,
+      apiUrl: API_BASE,
+      envVar: process.env.REACT_APP_API_URL
+    });
+  }, [API_BASE]);
 
   // Check for existing login on app start
   useEffect(() => {
@@ -29,7 +54,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserData = async (token) => {
     try {
-      console.log('👤 Fetching user data from /api/auth/me...');
+      console.log('👤 Fetching user data from:', `${API_BASE}/api/auth/me`);
       const response = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -101,6 +126,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       console.log('🔐 Attempting login for:', username);
+      console.log('🌐 API_BASE:', API_BASE);
+      console.log('🔗 Full login URL:', `${API_BASE}/api/auth/login`);
+      
       const response = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -109,6 +137,9 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response OK:', response.ok);
+      
       const data = await response.json();
       console.log('📡 Login response:', { status: response.status, hasToken: !!data.token });
 

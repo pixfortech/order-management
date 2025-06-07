@@ -19,16 +19,53 @@ app.get('/api/health', (req, res) => {
   res.send('API is healthy');
 });
 
+// Debug test route - Add this test route before your other routes
+app.get('/api/test/users', async (req, res) => {
+  try {
+    const User = require('./models/User');
+    const users = await User.find({}).limit(10);
+    res.json({
+      database: mongoose.connection.db.databaseName,
+      userCount: users.length,
+      users: users.map(u => ({ username: u.username, role: u.role }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
-// MongoDB connection
+// MongoDB connection with debug info
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-}).then(() => {
+}).then(async () => {
   console.log('Connected to MongoDB Atlas');
+  
+  // Debug: Check current database and collections
+  const db = mongoose.connection.db;
+  console.log('📊 Current database name:', db.databaseName);
+  
+  // List all collections
+  const collections = await db.listCollections().toArray();
+  console.log('📋 Available collections:', collections.map(c => c.name));
+  
+  // Check if users collection exists and count documents
+  try {
+    const User = require('./models/User');
+    const userCount = await User.countDocuments();
+    console.log('👥 Total users in database:', userCount);
+    
+    // List all users (for debugging only)
+    const users = await User.find({}, 'username role').limit(5);
+    console.log('👤 Sample users:', users);
+  } catch (error) {
+    console.error('❌ Error checking users:', error);
+  }
+  
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
