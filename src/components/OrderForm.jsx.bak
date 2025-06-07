@@ -10,8 +10,22 @@ let itemList = [];
 // API helper function to replace localStorage usage
 const getAuthToken = () => localStorage.getItem('authToken');
 
+// Replace the existing apiCall function in OrderForm.jsx with this:
 const apiCall = async (endpoint, options = {}) => {
-  const baseUrl = 'http://localhost:5000/api';
+  // Use the same API URL logic as orderApi.js
+  const getApiUrl = () => {
+    if (process.env.REACT_APP_API_URL) {
+      return process.env.REACT_APP_API_URL;
+    }
+    
+    if (window.location.hostname === 'localhost') {
+      return 'http://localhost:5000';
+    }
+    
+    return 'https://order-management-fbre.onrender.com'; // Your actual backend URL
+  };
+  
+  const baseUrl = `${getApiUrl()}/api`;
   const url = `${baseUrl}${endpoint}`;
   
   const defaultOptions = {
@@ -246,18 +260,26 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
   
   // Function to generate a unique order number
   const generateUniqueOrderNumber = async () => {
-  if (editingOrderId || !currentUser.branch || currentUser.branch === 'Loading...') return;
+  if (editingOrderId) return;
 
-  // Use selected branch for admin, current branch for staff
-  // In handleSubmit, update the orderData object:
-const activeBranch = currentUser.role === 'admin' && selectedBranch 
-  ? selectedBranch 
-  : currentUser.branch;
+  // For admin: use selectedBranch if available, otherwise use current branch
+  // For staff: always use current branch
+  const activeBranch = currentUser.role === 'admin' && selectedBranch 
+    ? selectedBranch 
+    : currentUser.branch;
+    
+  if (!activeBranch || activeBranch === 'Loading...') return;
     
   const branchCode = branches[activeBranch] || 'XX';
   const currentOccasion = orderInfo.occasion || 'General';
   const occasionPrefix = occasions[currentOccasion] || 'GEN';
   const prefix = `${branchCode}-${occasionPrefix}`;
+
+  console.log('🔢 Generating order number for:', {
+    activeBranch,
+    branchCode,
+    prefix
+  });
 
   try {
     const response = await apiCall(`/orders/last-number/${encodeURIComponent(prefix)}`);
@@ -617,25 +639,37 @@ const activeBranch = currentUser.role === 'admin' && selectedBranch
 
     const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
 
-    const orderData = {
-      customerName: customer.name,
-      phone: customer.phone,
-      address: customer.address,
-      email: customer.email,
-      ...orderInfo,
-      orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-      branch: currentUser.branch,
-      branchCode: branchPrefixes[currentUser.branch],
-      createdBy: currentUser.displayName || currentUser.username || 'Unknown',
-      boxes: boxes.map(calculateTotals),
-      notes,
-      extraDiscount,
-      advancePaid,
-      totalBoxCount: calculateTotalBoxCount(),
-      grandTotal: calculateGrandTotal(),
-      balance: calculateGrandTotal() - advancePaid,
-      status: status
-    };
+    // In handleSubmit function, replace the orderData object with:
+const orderData = {
+  customerName: customer.name,
+  phone: customer.phone,
+  address: customer.address,
+  email: customer.email,
+  pincode: customer.pincode,
+  city: customer.city,
+  state: customer.state,
+  ...orderInfo,
+  orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
+  // Use selected branch for admin, current branch for staff
+  branch: currentUser.role === 'admin' && selectedBranch 
+    ? selectedBranch 
+    : currentUser.branch,
+  branchCode: currentUser.role === 'admin' && selectedBranch
+    ? branches[selectedBranch] 
+    : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]),
+  createdBy: currentUser.displayName || currentUser.username || 'Unknown',
+  boxes: boxes.map(calculateTotals),
+  notes,
+  extraDiscount: {
+    value: extraDiscount.value || 0,
+    type: extraDiscount.type || 'value'
+  },
+  advancePaid: advancePaid || 0,
+  totalBoxCount: calculateTotalBoxCount(),
+  grandTotal: calculateGrandTotal(),
+  balance: calculateGrandTotal() - (advancePaid || 0),
+  status: status
+};
 
     if (editingOrderId) {
       orderData._id = editingOrderId;
@@ -730,9 +764,7 @@ useEffect(() => {
 
       // Fetch user profile first
       console.log('👤 Fetching user profile...');
-      const userResponse = await fetch('http://localhost:5000/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const userResponse = await apiCall('/auth/me');
       
       if (!userResponse.ok) {
         throw new Error(`Failed to fetch user data: ${userResponse.status}`);
@@ -767,9 +799,7 @@ useEffect(() => {
 
       // Fetch branches
       console.log('🏢 Fetching branches...');
-      const branchesResponse = await fetch('http://localhost:5000/api/branches', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const branchesResponse = await apiCall('/branches');
       
       if (!branchesResponse.ok) {
         throw new Error(`Failed to fetch branches: ${branchesResponse.status}`);
@@ -808,9 +838,7 @@ useEffect(() => {
       // Fetch brand details
       try {
         console.log('🏷️ Fetching brand...');
-        const brandResponse = await fetch('http://localhost:5000/api/brand', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const brandResponse = await apiCall('/brand');
         
         if (brandResponse.ok) {
           const brandData = await brandResponse.json();
@@ -831,9 +859,7 @@ useEffect(() => {
       // Fetch occasions
       try {
         console.log('🎉 Fetching occasions...');
-        const occasionsResponse = await fetch('http://localhost:5000/api/occasions', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const occasionsResponse = await apiCall('/occasions');
         
         if (occasionsResponse.ok) {
           const occasionsData = await occasionsResponse.json();
@@ -870,9 +896,7 @@ useEffect(() => {
       // Fetch items
       try {
         console.log('📦 Fetching items...');
-        const itemsResponse = await fetch('http://localhost:5000/api/items', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const itemsResponse = await apiCall('/items');
         
         if (itemsResponse.ok) {
           const itemsData = await itemsResponse.json();
@@ -1008,31 +1032,31 @@ useEffect(() => {
   }, [occasions]);
 
   // Order number validation effect
-  useEffect(() => {
-    if (!editOrderNumber || editingOrderId) return;
+useEffect(() => {
+  if (!editOrderNumber || editingOrderId) return;
 
-    const { orderPrefix, orderNumber } = orderInfo;
-    if (!orderPrefix || !orderNumber) return;
+  const { orderPrefix, orderNumber } = orderInfo;
+  if (!orderPrefix || !orderNumber) return;
 
-    setIsCheckingOrderNumber(true);
-    setOrderNumberStatus('checking');
+  setIsCheckingOrderNumber(true);
+  setOrderNumberStatus('checking');
 
-    const delay = setTimeout(async () => {
-      const isUnique = await checkOrderNumberUnique(orderPrefix, orderNumber);
-      setIsCheckingOrderNumber(false);
-      setOrderNumberStatus(isUnique ? 'available' : 'duplicate');
-      setOrderNumberError(!isUnique);
-    }, 500);
+  const delay = setTimeout(async () => {
+    const isUnique = await checkOrderNumberUnique(orderPrefix, orderNumber);
+    setIsCheckingOrderNumber(false);
+    setOrderNumberStatus(isUnique ? 'available' : 'duplicate');
+    setOrderNumberError(!isUnique);
+  }, 500);
 
-    return () => clearTimeout(delay);
-  }, [orderInfo.orderPrefix, orderInfo.orderNumber, editOrderNumber, editingOrderId]);
+  return () => clearTimeout(delay);
+}, [orderInfo.orderPrefix, orderInfo.orderNumber, editOrderNumber, editingOrderId]);
 
   // Generate unique order number when not editing
-  useEffect(() => {
-    if (!editingOrderId) {
-      generateUniqueOrderNumber();
-    }
-  }, [editingOrderId]);
+useEffect(() => {
+  if (!editingOrderId) {
+    generateUniqueOrderNumber();
+  }
+}, [editingOrderId, currentUser.branch, selectedBranch, branches, occasions, orderInfo.occasion]);
 
   // Before unload warning
   useEffect(() => {
@@ -1048,77 +1072,74 @@ useEffect(() => {
     };
   }, [hasFormData]);
 
-  // Auto-save functionality
-  useEffect(() => {
-    let isMounted = true;
-    
-    const autoSaveInterval = 30000;
-    const interval = setInterval(async () => {
-      if (
-        isMounted &&
-        customer.name?.trim() && 
-        customer.phone?.trim() && 
-        orderInfo.orderPrefix && 
-        orderInfo.orderNumber
-      ) {
+  // Auto-save functionality - REPLACE THE EXISTING AUTO-SAVE useEffect WITH THIS
+useEffect(() => {
+  let isMounted = true;
+  
+  const autoSaveInterval = 30000;
+  const interval = setInterval(async () => {
+    if (
+      isMounted &&
+      customer.name?.trim() && 
+      customer.phone?.trim() && 
+      orderInfo.orderPrefix && 
+      orderInfo.orderNumber &&
+      !editingOrderId
+    ) {
+      try {
+        const autoSaveData = {
+          customerName: customer.name,
+          phone: customer.phone,
+          address: customer.address,
+          email: customer.email,
+          pincode: customer.pincode,
+          city: customer.city,
+          state: customer.state,
+          ...orderInfo,
+          orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
+          branch: currentUser.role === 'admin' && selectedBranch 
+            ? selectedBranch 
+            : currentUser.branch,
+          branchCode: currentUser.role === 'admin' && selectedBranch
+            ? branches[selectedBranch] 
+            : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]),
+          createdBy: currentUser.displayName || currentUser.username || 'Unknown',
+          boxes: boxes.map(calculateTotals),
+          notes,
+          extraDiscount: {
+            value: extraDiscount.value || 0,
+            type: extraDiscount.type || 'value'
+          },
+          advancePaid: advancePaid || 0,
+          totalBoxCount: calculateTotalBoxCount(),
+          grandTotal: calculateGrandTotal(),
+          balance: calculateGrandTotal() - (advancePaid || 0),
+          status: 'auto-saved'
+        };
+        
         try {
-          const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
-          
-          const orderData = {
-            customerName: customer.name,
-            phone: customer.phone,
-            address: customer.address,
-            email: customer.email,
-            ...orderInfo,
-            orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-            branch: currentUser.branch,
-            branchCode: branchPrefixes[currentUser.branch],
-            createdBy: currentUser.displayName || currentUser.username || 'Unknown',
-            boxes: boxes.map(calculateTotals),
-            notes,
-            extraDiscount,
-            advancePaid,
-            totalBoxCount: calculateTotalBoxCount(),
-            grandTotal: calculateGrandTotal(),
-            balance: calculateGrandTotal() - advancePaid,
-          };
-          
-          try {
-            if (editingOrderId) {
-              const original = JSON.stringify(selectedOrder);
-              const current = JSON.stringify(orderData);
-              if (original === current) {
-                return;
-              }
-              orderData._id = editingOrderId;
-            }
+          const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
+          if (!isUnique) return;
 
-            if (!editingOrderId) {
-              const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
-              if (!isUnique) {
-                return;
-              }
-            }
-
-            await saveOrder(orderData, editingOrderId);
-            
-            if (isMounted) {
-              setLastSavedTime(new Date().toLocaleTimeString());
-            }
-          } catch (error) {
-            console.log('Auto-save failed:', error);
+          await saveOrder(autoSaveData);
+          
+          if (isMounted) {
+            setLastSavedTime(new Date().toLocaleTimeString());
           }
         } catch (error) {
-          console.log('Auto-save error:', error);
+          console.log('Auto-save failed:', error);
         }
+      } catch (error) {
+        console.log('Auto-save error:', error);
       }
-    }, autoSaveInterval);
-    
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [orderInfo, boxes, notes, extraDiscount, advancePaid, customer, selectedOrder, editingOrderId, currentUser]);
+    }
+  }, autoSaveInterval);
+  
+  return () => {
+    isMounted = false;
+    clearInterval(interval);
+  };
+}, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, branchPrefixes, editingOrderId]);
 
   // Update document title
   useEffect(() => {
@@ -1570,15 +1591,24 @@ useEffect(() => {
       <select
         value={orderInfo.orderPrefix.split('-')[0] || 'XX'}
         onChange={(e) => {
-          const newPrefix = e.target.value;
-          const occasionCode = orderInfo.orderPrefix.split('-')[1] || 'GEN';
-          const fullPrefix = `${newPrefix}-${occasionCode}`;
-          
-          setOrderInfo(prev => ({
-            ...prev,
-            orderPrefix: fullPrefix
-          }));
-        }}
+  const newPrefix = e.target.value;
+  const occasionCode = orderInfo.orderPrefix.split('-')[1] || 'GEN';
+  const fullPrefix = `${newPrefix}-${occasionCode}`;
+  
+  // Find the branch name for this code
+  const selectedBranchName = Object.keys(branches).find(
+    name => branches[name] === newPrefix
+  );
+  
+  console.log('🏢 Admin selected branch:', selectedBranchName, 'Code:', newPrefix);
+  
+  setSelectedBranch(selectedBranchName); // ADD THIS LINE
+  
+  setOrderInfo(prev => ({
+    ...prev,
+    orderPrefix: fullPrefix
+  }));
+}}
         disabled={!editOrderNumber}
         style={{ width: '80px' }}
         className={orderNumberError ? 'error-field' : ''}
@@ -1613,9 +1643,15 @@ useEffect(() => {
           const newOccasionCode = e.target.value;
           const fullPrefix = `${branchCode}-${newOccasionCode}`;
           
+          // Find the occasion name that matches this code
+          const occasionName = Object.keys(occasions).find(
+            name => occasions[name] === newOccasionCode
+          ) || 'General';
+          
           setOrderInfo(prev => ({
             ...prev,
-            orderPrefix: fullPrefix
+            orderPrefix: fullPrefix,
+            occasion: occasionName  // Sync the main occasion dropdown
           }));
         }}
         disabled={!editOrderNumber}

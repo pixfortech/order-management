@@ -227,3 +227,35 @@ router.get('/check-number', auth, async (req, res) => {
     
     const branchCode = orderNumber.split('-')[0].toLowerCase();
     const OrderModel = getOrderModel(branchCode);
+    
+    const existingOrder = await OrderModel.findOne({ orderNumber });
+    
+    res.json({ exists: !!existingOrder });
+  } catch (error) {
+    console.error('Check order number error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   DELETE /api/orders/:branchCode/:orderId
+// @desc    Delete order (admin only)
+// @access  Private (Admin)
+router.delete('/:branchCode/:orderId', auth, adminOnly, async (req, res) => {
+  try {
+    const { branchCode, orderId } = req.params;
+    const OrderModel = getOrderModel(branchCode);
+    
+    const order = await OrderModel.findByIdAndDelete(orderId);
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    
+    res.json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    console.error('Delete order error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+module.exports = router;

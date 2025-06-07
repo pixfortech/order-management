@@ -35,8 +35,8 @@ const orderSchema = new mongoose.Schema({
   notes: String,
   boxes: [boxSchema],
   extraDiscount: {
-  value: { type: Number, required: true },
-  type: { type: String, required: true }
+  value: { type: Number, default: 0 },
+  type: { type: String, default: 'value' }
 },
 
   advancePaid: Number,

@@ -1,7 +1,7 @@
 const express = require('express');
 const { auth, adminOnly } = require('../middleware/auth');
 const { getOrderModel, getCustomerModel } = require('../utils/dynamicCollections');
-const Branch = require('../models/Branch');
+//const Branch = require('../models/Branch');
 
 const router = express.Router();
 
