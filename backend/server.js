@@ -7,6 +7,10 @@ dotenv.config();
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const branchRoutes = require('./routes/branches');
+const brandRoutes = require('./routes/brandRoutes');
+const itemsRoutes = require('./routes/items'); // ADD THIS LINE
+const occasionsRoutes = require('./routes/occasions'); // ADD THIS LINE
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -37,6 +41,10 @@ app.get('/api/test/users', async (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/branches', branchRoutes);
+app.use('/api/brand', brandRoutes);
+app.use('/api/items', itemsRoutes); // ADD THIS LINE
+app.use('/api/occasions', occasionsRoutes); // ADD THIS LINE
 
 // MongoDB connection with debug info
 mongoose.connect(process.env.MONGODB_URI, {

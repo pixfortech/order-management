@@ -3,7 +3,6 @@ const router = express.Router();
 const Item = require('../models/Item');
 const { auth } = require('../middleware/auth'); // ✅ CORRECT
 
-
 // GET /api/items - Get all items
 router.get('/', auth, async (req, res) => {
   try {

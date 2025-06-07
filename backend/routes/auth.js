@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const mongoose = require('mongoose');
 const User = require("../models/User");
 const { auth: authenticateToken } = require("../middleware/auth");
 
@@ -17,6 +18,14 @@ router.post("/login", async (req, res) => {
       console.log('❌ Missing credentials');
       return res.status(400).json({ message: "Username and password are required" });
     }
+	
+	// Add this debug code in auth.js after line 15
+console.log('🔍 Database name:', mongoose.connection.db.databaseName);
+console.log('🔍 Connection state:', mongoose.connection.readyState);
+
+// Check if we can find ANY users
+const allUsers = await User.find({}).limit(3);
+console.log('📊 All users found:', allUsers.map(u => u.username));
 
     // Find user
     console.log('🔍 Searching for user:', username);

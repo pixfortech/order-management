@@ -1,0 +1,147 @@
+// freshUserSeeder.js - Complete user reset and creation
+require('dotenv').config();
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const User = require('./models/User'); // Adjust path if needed
+
+const users = [
+  {
+    username: "admin",
+    password: "admin",
+    email: "ganguramonline@gmail.com",
+    role: "admin",
+    branchName: "Head Office",
+    branchCode: "HO",
+    displayName: "System Administrator",
+    isActive: true
+  },
+  {
+    username: "ariadaha",
+    password: "ariadaha",
+    email: "ganguramonline@gmail.com",
+    role: "staff",
+    branchName: "Ariadaha",
+    branchCode: "AR",
+    displayName: "Ariadaha Manager",
+    isActive: true
+  },
+  {
+    username: "baranagar", 
+    password: "baranagar",
+    email: "ganguramonline@gmail.com",
+    role: "staff",
+    branchName: "Baranagar",
+    branchCode: "BR",
+    displayName: "Baranagar Manager",
+    isActive: true
+  },
+  {
+    username: "beadonstreet",
+    password: "beadonstreet", 
+    email: "ganguramonline@gmail.com",
+    role: "staff",
+    branchName: "Beadon Street",
+    branchCode: "BD",
+    displayName: "Beadon Street Manager",
+    isActive: true
+  },
+  {
+    username: "chowringhee",
+    password: "chowringhee",
+    email: "ganguramonline@gmail.com", 
+    role: "staff",
+    branchName: "Chowringhee",
+    branchCode: "CW",
+    displayName: "Chowringhee Manager",
+    isActive: true
+  },
+  {
+    username: "mistihub",
+    password: "mistihub",
+    email: "ganguramonline@gmail.com",
+    role: "staff", 
+    branchName: "Misti Hub",
+    branchCode: "MH",
+    displayName: "Misti Hub Manager",
+    isActive: true
+  }
+];
+
+async function resetAndCreateUsers() {
+  try {
+    // Connect to MongoDB
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log("🔗 Connected to MongoDB Atlas");
+    console.log(`📊 Database: ${mongoose.connection.db.databaseName}`);
+
+    // Step 1: Delete ALL existing users
+    console.log("\n🗑️  Deleting all existing users...");
+    const deleteResult = await User.deleteMany({});
+    console.log(`✅ Deleted ${deleteResult.deletedCount} existing users`);
+
+    // Step 2: Create fresh users with hashed passwords
+    console.log("\n👥 Creating fresh users...");
+    
+    for (const userData of users) {
+      try {
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        
+        // Create user with hashed password
+        const newUser = new User({
+          ...userData,
+          password: hashedPassword,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+        await newUser.save();
+        console.log(`✅ Created user: ${userData.username} (${userData.role})`);
+        
+        // Verify the user was created
+        const savedUser = await User.findOne({ username: userData.username });
+        console.log(`   🔍 Verified: ${savedUser.username} - Password hash starts with: ${savedUser.password.substring(0, 10)}...`);
+        
+      } catch (userError) {
+        console.error(`❌ Error creating user ${userData.username}:`, userError.message);
+      }
+    }
+
+    // Step 3: Final verification
+    console.log("\n🔍 Final verification:");
+    const allUsers = await User.find({}).select('username role branchName');
+    console.log(`📊 Total users created: ${allUsers.length}`);
+    
+    allUsers.forEach(user => {
+      console.log(`   👤 ${user.username} (${user.role}) - ${user.branchName}`);
+    });
+
+    // Step 4: Test password verification for admin
+    console.log("\n🔐 Testing password verification for admin user:");
+    const adminUser = await User.findOne({ username: 'admin' });
+    if (adminUser) {
+      const isValidPassword = await bcrypt.compare('admin', adminUser.password);
+      console.log(`   ✅ Admin password verification: ${isValidPassword ? 'SUCCESS' : 'FAILED'}`);
+    }
+
+    console.log("\n🎉 User reset and creation completed successfully!");
+    console.log("\n📋 Login credentials:");
+    users.forEach(user => {
+      console.log(`   ${user.username} | ${user.password}`);
+    });
+
+  } catch (error) {
+    console.error("❌ Error during user reset:", error);
+  } finally {
+    // Disconnect from MongoDB
+    await mongoose.disconnect();
+    console.log("\n🔌 Disconnected from MongoDB");
+    process.exit(0);
+  }
+}
+
+// Run the function
+resetAndCreateUsers();
