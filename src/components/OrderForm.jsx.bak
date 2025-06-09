@@ -692,7 +692,7 @@ const handleOrderChange = (e) => {
   
   setOrderNumberError(false);
 
-  // ===== ADD VALIDATION HERE =====
+  // ===== VALIDATION =====
   if (!currentUser.branch || currentUser.branch === 'Loading...') {
     setMessage('❌ Cannot save order: User branch information not loaded');
     return;
@@ -708,91 +708,141 @@ const handleOrderChange = (e) => {
     return;
   }
 
-    const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
+  const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
 
-    // And fix your handleSubmit function's orderData:
-const orderData = {
-  customerName: customer.name,
-  phone: customer.phone,
-  address: customer.address,
-  email: customer.email,
-  pincode: customer.pincode,
-  city: customer.city,
-  state: customer.state,
-  ...orderInfo,
-  orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-  // ✅ FIXED: Simplified branch selection
-  branch: currentUser.role === 'admin' && selectedBranch 
-    ? selectedBranch 
-    : currentUser.branch,
-  branchCode: currentUser.role === 'admin' && selectedBranch
-    ? branches[selectedBranch] 
-    : branches[currentUser.branch],
-  createdBy: currentUser.displayName || currentUser.username || 'Unknown',
-  boxes: boxes.map(calculateTotals),
-  notes,
-  extraDiscount: {
-    value: extraDiscount.value || 0,
-    type: extraDiscount.type || 'value'
-  },
-  advancePaid: advancePaid || 0,
-  totalBoxCount: calculateTotalBoxCount(),
-  grandTotal: calculateGrandTotal(),
-  balance: calculateGrandTotal() - (advancePaid || 0),
-  status: status
-};
-
-    if (editingOrderId) {
-      orderData._id = editingOrderId;
-    }
-
+  // ===== DRAFT HANDLING LOGIC =====
+  let existingDraftId = null;
+  if (!editingOrderId && status === 'saved') {
     try {
-      if (editingOrderId) {
-        const original = JSON.stringify(selectedOrder);
-        const current = JSON.stringify(orderData);
-        if (original === current) {
-          setMessage("⚠️ No changes detected. Nothing saved.");
-          return;
+      console.log('🔍 Checking for existing draft:', fullOrderNumber);
+      const checkResponse = await apiCall(`/orders/check-draft?orderNumber=${encodeURIComponent(fullOrderNumber)}`);
+      if (checkResponse.ok) {
+        const checkData = await checkResponse.json();
+        existingDraftId = checkData.draftId;
+        if (existingDraftId) {
+          console.log('📝 Found existing draft to convert:', existingDraftId);
         }
       }
+    } catch (error) {
+      console.log('⚠️ Draft check failed (continuing anyway):', error);
+    }
+  }
 
-      if (!editingOrderId) {
-        const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
-        if (!isUnique) {
-          setOrderNumberError(true);
-          setMessage('❌ This order number already exists. Please choose a different one.');
-          setEditOrderNumber(true);
-          return;
-        }
-      }
+  // ===== CREATE ORDER DATA =====
+  const orderData = {
+    customerName: customer.name,
+    phone: customer.phone,
+    address: customer.address,
+    email: customer.email,
+    pincode: customer.pincode,
+    city: customer.city,
+    state: customer.state,
+    ...orderInfo,
+    orderNumber: fullOrderNumber,
+    // ✅ FIXED: Handle HO branch -> BD prefix conversion
+    branch: currentUser.role === 'admin' && selectedBranch 
+      ? selectedBranch 
+      : currentUser.branch,
+    branchCode: (() => {
+      const actualBranchCode = currentUser.role === 'admin' && selectedBranch
+        ? branches[selectedBranch] 
+        : branches[currentUser.branch];
+      // Convert HO to BD for order storage
+      return actualBranchCode === 'HO' ? 'BD' : actualBranchCode;
+    })(),
+    createdBy: currentUser.displayName || currentUser.username || 'Unknown',
+    boxes: boxes.map(calculateTotals),
+    notes,
+    extraDiscount: {
+      value: extraDiscount.value || 0,
+      type: extraDiscount.type || 'value'
+    },
+    advancePaid: advancePaid || 0,
+    totalBoxCount: calculateTotalBoxCount(),
+    grandTotal: calculateGrandTotal(),
+    balance: calculateGrandTotal() - (advancePaid || 0),
+    status: status,
+    isDraft: false // Always false for manual saves
+  };
 
-      await saveOrder(orderData, editingOrderId);
-      
-      setMessage(`✅ Order ${status === 'held' ? 'held' : 'saved'} successfully!`);
-      setLastSavedTime(new Date().toLocaleTimeString());
+  // ===== SET ORDER ID FOR UPDATE =====
+  if (editingOrderId) {
+    orderData._id = editingOrderId;
+    console.log('✏️ Updating existing order:', editingOrderId);
+  } else if (existingDraftId) {
+    orderData._id = existingDraftId;
+    console.log('🔄 Converting draft to saved order:', existingDraftId);
+  }
 
-      if (status === 'saved' && !editingOrderId) {
-        const current = parseInt(orderInfo.orderNumber);
-        const next = (current + 1).toString().padStart(3, '0');
-        setOrderInfo(prev => ({ ...prev, orderNumber: next }));
-        setEditOrderNumber(false);
-      }
-    } catch (err) {
-      console.error('Save order error:', err);
-      
-      const errorMessage = err.message || '';
-      
-      if (errorMessage.includes('unique') || errorMessage.includes('duplicate') || err.status === 409) {
-        setOrderNumberError(true);
-        setMessage('❌ This order number already exists. Please use a different number.');
-        setEditOrderNumber(true);
-      } else if (err.status === 500) {
-        setMessage('❌ Server error occurred. Please try again or contact support.');
-      } else {
-        setMessage('❌ Failed to save order: ' + (errorMessage || 'Unknown error'));
+  try {
+    // ===== CHECK FOR CHANGES (EDIT MODE) =====
+    if (editingOrderId) {
+      const original = JSON.stringify(selectedOrder);
+      const current = JSON.stringify(orderData);
+      if (original === current) {
+        setMessage("⚠️ No changes detected. Nothing saved.");
+        return;
       }
     }
-  };
+
+    // ===== CHECK ORDER NUMBER UNIQUENESS (NEW ORDERS ONLY) =====
+    if (!editingOrderId && !existingDraftId) {
+      console.log('🔍 Checking order number uniqueness for new order...');
+      const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
+      if (!isUnique) {
+        setOrderNumberError(true);
+        setMessage('❌ This order number already exists. Please choose a different one.');
+        setEditOrderNumber(true);
+        return;
+      }
+    }
+
+    // ===== SAVE THE ORDER =====
+    console.log('💾 Saving order:', {
+      isEdit: !!editingOrderId,
+      isDraftConversion: !!existingDraftId,
+      orderNumber: fullOrderNumber,
+      status: status
+    });
+
+    await saveOrder(orderData, editingOrderId || existingDraftId);
+    
+    // ===== SUCCESS HANDLING =====
+    setMessage(`✅ Order ${status === 'held' ? 'held' : 'saved'} successfully!`);
+    setLastSavedTime(new Date().toLocaleTimeString());
+
+    // ===== AUTO-INCREMENT ORDER NUMBER (NEW SAVES ONLY) =====
+    if (status === 'saved' && !editingOrderId) {
+      const current = parseInt(orderInfo.orderNumber);
+      const next = (current + 1).toString().padStart(3, '0');
+      setOrderInfo(prev => ({ ...prev, orderNumber: next }));
+      setEditOrderNumber(false);
+      console.log('🔢 Auto-incremented order number to:', next);
+    }
+
+    // ===== CLEAR EDITING STATE =====
+    if (editingOrderId || existingDraftId) {
+      // Don't auto-increment when editing or converting drafts
+      setEditOrderNumber(false);
+    }
+
+  } catch (err) {
+    console.error('❌ Save order error:', err);
+    
+    const errorMessage = err.message || '';
+    
+    // ===== ERROR HANDLING =====
+    if (errorMessage.includes('unique') || errorMessage.includes('duplicate') || err.status === 409) {
+      setOrderNumberError(true);
+      setMessage('❌ This order number already exists. Please use a different number.');
+      setEditOrderNumber(true);
+    } else if (err.status === 500) {
+      setMessage('❌ Server error occurred. Please try again or contact support.');
+    } else {
+      setMessage('❌ Failed to save order: ' + (errorMessage || 'Unknown error'));
+    }
+  }
+};
 
   // ===== EFFECTS =====
   // Fetch all dynamic data on component mount

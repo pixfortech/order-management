@@ -22,6 +22,9 @@ const orderSchema = new mongoose.Schema({
   phone: String,
   address: String,
   email: String,
+  pincode: String,
+  city: String,
+  state: String,
   occasion: String,
   orderPrefix: String,
   orderNumber: {
@@ -47,15 +50,29 @@ const orderSchema = new mongoose.Schema({
     enum: ['saved', 'held', 'auto-saved'],
     default: 'saved'
   },
+  // ✅ ADDED: Draft management
+  isDraft: {
+    type: Boolean,
+    default: false
+  },
   // ✅ ADDED: Branch information for better organization
   branch: String,
-  branchCode: String
+  branchCode: String,
+  createdBy: String,
+  // ✅ ADDED: Order progress tracking
+  orderProgress: {
+    type: String,
+    enum: ['', 'Packed', 'Delivered', 'Completed', 'Cancelled'],
+    default: ''
+  }
 }, { 
-  timestamps: true,
-  // ✅ ADDED: Create compound index for better performance and branch-specific uniqueness
-  indexes: [
-    { orderNumber: 1, branchCode: 1 } // Unique within each branch
-  ]
+  timestamps: true
 });
+
+// ✅ ADDED: Create compound indexes for better performance and branch-specific uniqueness
+orderSchema.index({ orderNumber: 1, branchCode: 1 }); // Unique within each branch
+orderSchema.index({ isDraft: 1, status: 1 }); // For draft queries
+orderSchema.index({ createdAt: -1 }); // For sorting
+orderSchema.index({ customerName: 1, phone: 1 }); // For customer searches
 
 module.exports = mongoose.model('Order', orderSchema);

@@ -1804,65 +1804,87 @@ useEffect(() => {
               {!item.name || item.name !== '__custom__' ? (
                 // Regular item dropdown
                 <select
-                  value={item.name || ""}
-                  onChange={(e) => {
-                    const selectedValue = e.target.value;
-                    
-                    const updatedBoxes = boxes.map(b => {
-                      if (b.id !== box.id) return b;
-                      const updatedItems = b.items.map(i => {
-                        if (i.id !== item.id) return i;
-                        
-                        if (selectedValue === "__custom__") {
-                          return {
-                            ...i,
-                            name: "__custom__",
-                            customName: false
-                          };
-                        } else if (selectedValue) {
-                          const selected = itemList.find(listItem => listItem.name === selectedValue);
-                          if (selected) {
-                            return {
-                              ...i,
-                              name: selected.name,
-                              price: selected.price,
-                              unit: selected.unit || 'pcs',
-                              amount: i.qty * selected.price,
-                              customName: false
-                            };
-                          }
-                        }
-                        
-                        return {
-                          ...i,
-                          name: selectedValue,
-                          customName: false
-                        };
-                      });
-                      return { ...b, items: updatedItems };
-                    });
-                    
-                    setBoxes(updatedBoxes);
-                  }}
-                  style={{ flex: 2 }}
-                  className={(!item.name || (item.name === "__custom__" && !item.customName)) ? 'error-field' : ''}
-                >
-                  <option value="">Select Item</option>
-                  {itemList.map((i, index) => (
-                    <option key={index} value={i.name}>{i.name}</option>
-                  ))}
-                  <option value="__custom__">+ Custom Item</option>
-                </select>
-              ) : (
-                // Custom item input field
-                <input
-                  type="text"
-                  placeholder="Enter custom item name"
-                  onChange={(e) => handleCustomItemInput(box.id, item.id, e.target.value)}
-                  style={{ flex: 2 }}
-                  className={!item.customName ? 'error-field' : ''}
-                />
-              )}
+    value={item.name || ""}
+    onChange={(e) => {
+      const selectedValue = e.target.value;
+      
+      const updatedBoxes = boxes.map(b => {
+        if (b.id !== box.id) return b;
+        const updatedItems = b.items.map(i => {
+          if (i.id !== item.id) return i;
+          
+          if (selectedValue === "__custom__") {
+            return {
+              ...i,
+              name: "__custom__",
+              customName: false
+            };
+          } else if (selectedValue) {
+            const selected = itemList.find(listItem => listItem.name === selectedValue);
+            if (selected) {
+              return {
+                ...i,
+                name: selected.name,
+                price: selected.price,
+                unit: selected.unit || 'pcs',
+                amount: i.qty * selected.price,
+                customName: false
+              };
+            }
+          }
+          
+          return {
+            ...i,
+            name: selectedValue,
+            customName: false
+          };
+        });
+        return { ...b, items: updatedItems };
+      });
+      
+      setBoxes(updatedBoxes);
+    }}
+    style={{ flex: 2 }}
+    className={(!item.name || (item.name === "__custom__" && !item.customName)) ? 'error-field' : ''}
+  >
+    <option value="">Select Item</option>
+    {itemList.map((i, index) => (
+      <option key={index} value={i.name}>{i.name}</option>
+    ))}
+    <option value="__custom__">+ Custom Item</option>
+  </select>
+) : (
+  // ✅ FIXED: Custom item input field
+  <input
+    type="text"
+    placeholder="Enter custom item name"
+    value={item.customName ? item.name : ''}
+    onChange={(e) => {
+      const newValue = e.target.value;
+      
+      const updatedBoxes = boxes.map(b => {
+        if (b.id !== box.id) return b;
+        
+        const updatedItems = b.items.map(i => {
+          if (i.id !== item.id) return i;
+          
+          return {
+            ...i,
+            name: newValue,
+            customName: true // Mark as having custom name
+          };
+        });
+        
+        return { ...b, items: updatedItems };
+      });
+      
+      setBoxes(updatedBoxes);
+    }}
+    style={{ flex: 2 }}
+    className={!item.customName || !item.name ? 'error-field' : ''}
+    autoFocus // Auto-focus when switching to custom
+  />
+)}
               
               <input
                 type="number"
