@@ -46,6 +46,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/brand', brandRoutes);
 app.use('/api/items', itemsRoutes); // ADD THIS LINE
 app.use('/api/occasions', occasionsRoutes); // ADD THIS LINE
+app.use('/api/orders', ordersRoutes); // ADD THIS LINE
 
 // MongoDB connection with debug info
 mongoose.connect(process.env.MONGODB_URI, {
