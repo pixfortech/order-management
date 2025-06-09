@@ -1,7 +1,6 @@
-const displayName = localStorage.getItem('displayName') || '{displayName}';
-
 import React, { useEffect, useState } from 'react';
 
+const displayName = localStorage.getItem('displayName') || '{displayName}';
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');

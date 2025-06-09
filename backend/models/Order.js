@@ -7,14 +7,14 @@ const itemSchema = new mongoose.Schema({
   price: Number,
   unit: String,
   amount: Number,
-  customName: Boolean // ✅ ADDED: to support custom item logic
+  customName: Boolean
 });
 
 const boxSchema = new mongoose.Schema({
   items: [itemSchema],
   discount: Number,
   total: Number,
-  boxCount: Number // ✅ ADDED: used in calculation
+  boxCount: Number
 });
 
 const orderSchema = new mongoose.Schema({
@@ -26,8 +26,8 @@ const orderSchema = new mongoose.Schema({
   orderPrefix: String,
   orderNumber: {
     type: String,
-    required: true,
-    unique: true // ✅ RECOMMENDED: if you're enforcing uniqueness
+    required: true
+    // ✅ REMOVED: unique: true - this was causing the ObjectId validation error
   },
   orderDate: String,
   deliveryDate: String,
@@ -35,19 +35,27 @@ const orderSchema = new mongoose.Schema({
   notes: String,
   boxes: [boxSchema],
   extraDiscount: {
-  value: { type: Number, default: 0 },
-  type: { type: String, default: 'value' }
-},
-
+    value: { type: Number, default: 0 },
+    type: { type: String, default: 'value' }
+  },
   advancePaid: Number,
-  totalBoxCount: Number, // ✅ ADDED
+  totalBoxCount: Number,
   grandTotal: Number,
   balance: Number,
   status: {
     type: String,
     enum: ['saved', 'held', 'auto-saved'],
     default: 'saved'
-  }
-}, { timestamps: true });
+  },
+  // ✅ ADDED: Branch information for better organization
+  branch: String,
+  branchCode: String
+}, { 
+  timestamps: true,
+  // ✅ ADDED: Create compound index for better performance and branch-specific uniqueness
+  indexes: [
+    { orderNumber: 1, branchCode: 1 } // Unique within each branch
+  ]
+});
 
 module.exports = mongoose.model('Order', orderSchema);

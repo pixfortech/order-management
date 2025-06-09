@@ -57,9 +57,12 @@ const apiCall = async (endpoint, options = {}) => {
 
 export const saveOrder = async (orderData, editingOrderId = null) => {
   try {
+    // Use the branchCode from orderData to determine which collection to save to
     const branchCode = orderData.branchCode.toLowerCase();
     
-    console.log('💾 Saving order to branch:', branchCode); // Debug log
+    console.log('💾 Saving order to branch collection:', `orders_${branchCode}`);
+    console.log('📊 Order data branch:', orderData.branch);
+    console.log('🏷️ Order data branchCode:', orderData.branchCode);
     
     if (editingOrderId) {
       // Update existing order

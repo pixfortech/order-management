@@ -1,59 +1,58 @@
 const mongoose = require('mongoose');
 
-const createOrderSchema = () => new mongoose.Schema({
-  orderNumber: { 
-    type: String, 
-    required: true, 
-    unique: true 
-  },
-  customerName: { 
-    type: String, 
-    required: true 
-  },
-  phone: { 
-    type: String, 
-    required: true 
-  },
+// Simple order schema for dynamic collections
+const orderSchema = new mongoose.Schema({
+  customerName: String,
+  phone: String,
   address: String,
   email: String,
   pincode: String,
   city: String,
   state: String,
-  branch: String,
-  branchCode: String,
-  createdBy: String,
   occasion: String,
-  orderDate: Date,
-  deliveryDate: Date,
+  orderPrefix: String,
+  orderNumber: { type: String }, // Removed unique constraint
+  orderDate: String,
+  deliveryDate: String,
   deliveryTime: String,
-  boxes: Array,
   notes: String,
+  boxes: [{
+    items: [{
+      name: String,
+      qty: Number,
+      price: Number,
+      unit: String,
+      amount: Number,
+      customName: Boolean
+    }],
+    discount: Number,
+    total: Number,
+    boxCount: Number
+  }],
   extraDiscount: {
     value: { type: Number, default: 0 },
-    type: { type: String, enum: ['value', 'percentage'], default: 'value' }
+    type: { type: String, default: 'value' }
   },
-  advancePaid: { type: Number, default: 0 },
+  advancePaid: Number,
   totalBoxCount: Number,
   grandTotal: Number,
   balance: Number,
-  status: { 
-    type: String, 
-    enum: ['saved', 'held', 'completed', 'cancelled'], 
-    default: 'saved' 
+  status: {
+    type: String,
+    enum: ['saved', 'held', 'auto-saved'],
+    default: 'saved'
   },
+  branch: String,
+  branchCode: String,
+  createdBy: String
 }, { 
   timestamps: true 
 });
 
-const createCustomerSchema = () => new mongoose.Schema({
-  name: { 
-    type: String, 
-    required: true 
-  },
-  phone: { 
-    type: String, 
-    required: true 
-  },
+// Simple customer schema
+const customerSchema = new mongoose.Schema({
+  name: String,
+  phone: String,
   email: String,
   address: String,
   pincode: String,
@@ -63,34 +62,84 @@ const createCustomerSchema = () => new mongoose.Schema({
   branchCode: String,
   totalOrders: { type: Number, default: 0 },
   totalSpent: { type: Number, default: 0 },
-  lastOrderDate: Date,
+  lastOrderDate: Date
 }, { 
   timestamps: true 
 });
 
 const getOrderModel = (branchCode) => {
-  const collectionName = `orders_${branchCode.toLowerCase()}`;
-  
-  if (mongoose.models[collectionName]) {
-    return mongoose.models[collectionName];
+  try {
+    // ✅ FIXED: Consistent case handling
+    console.log('🏪 Creating order model for branchCode:', branchCode);
+    
+    if (!branchCode || typeof branchCode !== 'string') {
+      throw new Error(`Invalid branchCode: ${branchCode}`);
+    }
+    
+    // Always use lowercase for collection names to match your database
+    const normalizedBranchCode = branchCode.toLowerCase();
+    const collectionName = `orders_${normalizedBranchCode}`;
+    const modelName = `Order_${branchCode.toUpperCase()}`; // Model name can be uppercase
+    
+    console.log('📦 Collection name:', collectionName);
+    console.log('🏷️ Model name:', modelName);
+    
+    // Check if model already exists
+    if (mongoose.models[modelName]) {
+      console.log('♻️ Reusing existing model:', modelName);
+      return mongoose.models[modelName];
+    }
+    
+    // Create and return new model
+    console.log('🆕 Creating new model:', modelName);
+    const model = mongoose.model(modelName, orderSchema, collectionName);
+    
+    console.log('✅ Order model created successfully');
+    return model;
+    
+  } catch (error) {
+    console.error('❌ Error in getOrderModel:', error);
+    throw error;
   }
-  
-  return mongoose.model(collectionName, createOrderSchema(), collectionName);
 };
 
 const getCustomerModel = (branchCode) => {
-  const collectionName = `customers_${branchCode.toLowerCase()}`;
-  
-  if (mongoose.models[collectionName]) {
-    return mongoose.models[collectionName];
+  try {
+    // ✅ FIXED: Consistent case handling
+    console.log('👤 Creating customer model for branchCode:', branchCode);
+    
+    if (!branchCode || typeof branchCode !== 'string') {
+      throw new Error(`Invalid branchCode: ${branchCode}`);
+    }
+    
+    // Always use lowercase for collection names to match your database
+    const normalizedBranchCode = branchCode.toLowerCase();
+    const collectionName = `customers_${normalizedBranchCode}`;
+    const modelName = `Customer_${branchCode.toUpperCase()}`; // Model name can be uppercase
+    
+    console.log('📦 Collection name:', collectionName);
+    console.log('🏷️ Model name:', modelName);
+    
+    // Check if model already exists
+    if (mongoose.models[modelName]) {
+      console.log('♻️ Reusing existing model:', modelName);
+      return mongoose.models[modelName];
+    }
+    
+    // Create and return new model
+    console.log('🆕 Creating new model:', modelName);
+    const model = mongoose.model(modelName, customerSchema, collectionName);
+    
+    console.log('✅ Customer model created successfully');
+    return model;
+    
+  } catch (error) {
+    console.error('❌ Error in getCustomerModel:', error);
+    throw error;
   }
-  
-  return mongoose.model(collectionName, createCustomerSchema(), collectionName);
 };
 
-module.exports = { 
-  getOrderModel, 
-  getCustomerModel,
-  createOrderSchema,
-  createCustomerSchema
+module.exports = {
+  getOrderModel,
+  getCustomerModel
 };

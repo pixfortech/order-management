@@ -258,28 +258,46 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
   }
 };
   
-  // Function to generate a unique order number
-  const generateUniqueOrderNumber = async () => {
+  // Replace your generateUniqueOrderNumber function with this:
+const generateUniqueOrderNumber = async () => {
   if (editingOrderId) return;
 
-  // For admin: use selectedBranch if available, otherwise use current branch
-  // For staff: always use current branch
-  const activeBranch = currentUser.role === 'admin' && selectedBranch 
-    ? selectedBranch 
-    : currentUser.branch;
+  // ✅ FIXED: Simplified branch selection - always use currentUser.branch for staff
+  let activeBranch;
+  let branchCode;
+  
+  if (currentUser.role === 'admin' && selectedBranch) {
+    // Admin has selected a specific branch
+    activeBranch = selectedBranch;
+    branchCode = branches[selectedBranch];
+  } else {
+    // Use current user's branch (works for both admin and staff)
+    activeBranch = currentUser.branch;
+    branchCode = branches[currentUser.branch];
+  }
+  
+  console.log('🔢 Generating order number:', {
+    userRole: currentUser.role,
+    activeBranch,
+    branchCode,
+    availableBranches: Object.keys(branches)
+  });
     
-  if (!activeBranch || activeBranch === 'Loading...') return;
-    
-  const branchCode = branches[activeBranch] || 'XX';
+  if (!activeBranch || activeBranch === 'Loading...' || !branchCode) {
+    console.log('❌ Cannot generate order number - invalid branch info');
+    setOrderInfo(prev => ({ 
+      ...prev, 
+      orderPrefix: 'XX-GEN', 
+      orderNumber: '001' 
+    }));
+    return;
+  }
+  
   const currentOccasion = orderInfo.occasion || 'General';
   const occasionPrefix = occasions[currentOccasion] || 'GEN';
   const prefix = `${branchCode}-${occasionPrefix}`;
 
-  console.log('🔢 Generating order number for:', {
-    activeBranch,
-    branchCode,
-    prefix
-  });
+  console.log('🔢 Using prefix:', prefix);
 
   try {
     const response = await apiCall(`/orders/last-number/${encodeURIComponent(prefix)}`);
@@ -292,7 +310,9 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
         orderPrefix: prefix, 
         orderNumber: nextNumber 
       }));
+      console.log('✅ Generated order number:', `${prefix}-${nextNumber}`);
     } else {
+      console.log('⚠️ API call failed, using default');
       setOrderInfo(prev => ({ 
         ...prev, 
         orderPrefix: prefix, 
@@ -466,7 +486,8 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
     }
   };
   
-  const handleOrderChange = (e) => {
+  // Also fix your handleOrderChange function:
+const handleOrderChange = (e) => {
   const { name, value } = e.target;
   if (name === 'occasion') {
     if (value === '__add_new__') {
@@ -474,17 +495,27 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
       return;
     }
     
-    // Use selected branch for admin, current branch for staff
-    // In handleSubmit, update the orderData object:
-const activeBranch = currentUser.role === 'admin' && selectedBranch 
-  ? selectedBranch 
-  : currentUser.branch;
+    // ✅ FIXED: Simplified branch logic
+    let activeBranch;
+    let branchCode;
+    
+    if (currentUser.role === 'admin' && selectedBranch) {
+      activeBranch = selectedBranch;
+      branchCode = branches[selectedBranch];
+    } else {
+      activeBranch = currentUser.branch;
+      branchCode = branches[currentUser.branch];
+    }
+    
+    console.log('🎉 Occasion changed:', {
+      newOccasion: value,
+      activeBranch,
+      branchCode
+    });
       
-    const branchCode = (activeBranch && activeBranch !== 'Loading...') 
-      ? branches[activeBranch] || 'XX' 
-      : 'XX';
+    const finalBranchCode = branchCode || 'XX';
     const occasionPrefix = occasions[value] || value.slice(0, 3).toUpperCase();
-    const fullPrefix = `${branchCode}-${occasionPrefix}`;
+    const fullPrefix = `${finalBranchCode}-${occasionPrefix}`;
     
     setOrderInfo({ ...orderInfo, occasion: value, orderPrefix: fullPrefix });
   } else {
@@ -639,7 +670,7 @@ const activeBranch = currentUser.role === 'admin' && selectedBranch
 
     const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
 
-    // In handleSubmit function, replace the orderData object with:
+    // And fix your handleSubmit function's orderData:
 const orderData = {
   customerName: customer.name,
   phone: customer.phone,
@@ -650,13 +681,13 @@ const orderData = {
   state: customer.state,
   ...orderInfo,
   orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-  // Use selected branch for admin, current branch for staff
+  // ✅ FIXED: Simplified branch selection
   branch: currentUser.role === 'admin' && selectedBranch 
     ? selectedBranch 
     : currentUser.branch,
   branchCode: currentUser.role === 'admin' && selectedBranch
     ? branches[selectedBranch] 
-    : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]),
+    : branches[currentUser.branch],
   createdBy: currentUser.displayName || currentUser.username || 'Unknown',
   boxes: boxes.map(calculateTotals),
   notes,
@@ -762,7 +793,7 @@ useEffect(() => {
         throw new Error('No authentication token found');
       }
 
-      // Fetch user profile first
+      // ===== FETCH USER PROFILE =====
       console.log('👤 Fetching user profile...');
       const userResponse = await apiCall('/auth/me');
       
@@ -771,33 +802,24 @@ useEffect(() => {
       }
       
       const userDataResponse = await userResponse.json();
-      console.log('👤 User data received:', userDataResponse);
+      console.log('👤 Raw user data received:', userDataResponse);
       
       const userData = userDataResponse.user || userDataResponse;
 
-      // Set current user with proper fallbacks
-      const userBranchName = userData.branchName || userData.branch || 'Head Office';
-      const userBranchCode = userData.branchCode || 'HO';
-      
-      console.log('🏢 User branch info:', {
-        branchName: userBranchName,
-        branchCode: userBranchCode
-      });
-      
-      setCurrentUser({
+      // Validate user has required data
+      if (!userData.username) {
+        throw new Error('Invalid user data: missing username');
+      }
+
+      console.log('👤 Processed user data:', {
         id: userData.id,
         username: userData.username,
-        branch: userBranchName,
-        branchCode: userBranchCode,
-        role: userData.role || 'staff',
-        displayName: userData.displayName || userData.username
+        branchName: userData.branchName,
+        branchCode: userData.branchCode,
+        role: userData.role
       });
 
-      // Update global user object
-      user.branch = userBranchName;
-      user.role = userData.role || 'staff';
-
-      // Fetch branches
+      // ===== FETCH BRANCHES =====
       console.log('🏢 Fetching branches...');
       const branchesResponse = await apiCall('/branches');
       
@@ -810,45 +832,117 @@ useEffect(() => {
       
       // Convert branches array to object mapping
       const branchesObj = {};
-      if (Array.isArray(branchesData)) {
+      if (Array.isArray(branchesData) && branchesData.length > 0) {
         branchesData.forEach(branch => {
-          branchesObj[branch.branchName] = branch.branchCode;
+          if (branch.branchName && branch.branchCode) {
+            branchesObj[branch.branchName] = branch.branchCode;
+          }
         });
+      } else {
+        console.warn('⚠️ No branches data received or invalid format');
       }
       
-      console.log('🏢 Processed branches object:', branchesObj);
+      console.log('🏢 Processed branches mapping:', branchesObj);
+
+      // ===== PROCESS USER BRANCH ASSIGNMENT =====
+      const userBranchName = userData.branchName || userData.branch;
+      const userBranchCode = userData.branchCode;
+
+      console.log('🔍 User branch assignment analysis:', {
+        userBranchName,
+        userBranchCode,
+        branchExistsInMapping: !!branchesObj[userBranchName],
+        availableBranches: Object.keys(branchesObj)
+      });
+
+      // Validate user has branch information
+      if (!userBranchName || !userBranchCode) {
+        console.error('❌ User missing critical branch information');
+        setMessage('❌ Your account is missing branch assignment. Please contact administrator.');
+        setIsLoadingData(false);
+        return;
+      }
+
+      // Handle branch mapping reconciliation
+      let finalBranchName = userBranchName;
+      let finalBranchCode = userBranchCode;
+      let branchMappingUpdated = false;
+
+      // Check if user's branch name exists in branches mapping
+      if (!branchesObj[userBranchName]) {
+        console.log('⚠️ User branch name not found in branches mapping');
+        
+        // Try to find a branch with matching code
+        const foundBranchName = Object.keys(branchesObj).find(
+          name => branchesObj[name] === userBranchCode
+        );
+        
+        if (foundBranchName) {
+          console.log('✅ Found existing branch with matching code:', foundBranchName);
+          finalBranchName = foundBranchName;
+        } else {
+          console.log('🔧 User branch not in master branches list, adding it to mapping');
+          branchesObj[userBranchName] = userBranchCode;
+          branchMappingUpdated = true;
+          finalBranchName = userBranchName;
+        }
+      } else {
+        console.log('✅ User branch found in mapping');
+      }
+
+      // Final validation
+      if (!branchesObj[finalBranchName]) {
+        console.error('❌ Could not resolve user branch mapping');
+        setMessage('❌ Could not resolve your branch assignment. Please contact administrator.');
+        setIsLoadingData(false);
+        return;
+      }
+
+      console.log('✅ Final branch resolution:', {
+        finalBranchName,
+        finalBranchCode,
+        mappingValue: branchesObj[finalBranchName],
+        branchMappingUpdated
+      });
+
+      // ===== SET USER DATA =====
+      const finalUserData = {
+        id: userData.id,
+        username: userData.username,
+        branch: finalBranchName,
+        branchCode: finalBranchCode,
+        role: userData.role || 'staff',
+        displayName: userData.displayName || userData.username
+      };
+
+      setCurrentUser(finalUserData);
       
+      // Update global user object
+      user.branch = finalBranchName;
+      user.role = userData.role || 'staff';
+
+      // Set branches state
       setBranches(branchesObj);
-      branchPrefixes = branchesObj; // Update global variable
+      branchPrefixes = branchesObj;
 
-      // Normalize and verify branch
-      const normalizedBranch = normalizeBranchName(userBranchName, branchesObj);
-      console.log('🏢 Normalized branch:', normalizedBranch);
-      
-      // Update user with normalized branch
-      setCurrentUser(prev => ({
-        ...prev,
-        branch: normalizedBranch,
-        branchCode: branchesObj[normalizedBranch] || userBranchCode
-      }));
+      if (branchMappingUpdated) {
+        setMessage(`ℹ️ Your branch "${finalBranchName}" was added to the system mapping.`);
+      }
 
-      // Update global user
-      user.branch = normalizedBranch;
-
-      // Fetch brand details
+      // ===== FETCH BRAND DETAILS =====
       try {
-        console.log('🏷️ Fetching brand...');
+        console.log('🏷️ Fetching brand details...');
         const brandResponse = await apiCall('/brand');
         
         if (brandResponse.ok) {
           const brandData = await brandResponse.json();
-          console.log('🏷️ Brand data:', brandData);
+          console.log('🏷️ Brand data received:', brandData);
           setBrandDetails({
             displayName: brandData.displayName || brandData.name || 'Order Management',
             name: brandData.name || 'Brand'
           });
         } else {
-          console.warn('⚠️ Brand fetch failed, using defaults');
+          console.warn('⚠️ Brand fetch failed, using fallback');
           setBrandDetails({ displayName: 'Order Management', name: 'Brand' });
         }
       } catch (brandError) {
@@ -856,32 +950,36 @@ useEffect(() => {
         setBrandDetails({ displayName: 'Order Management', name: 'Brand' });
       }
 
-      // Fetch occasions
+      // ===== FETCH OCCASIONS =====
       try {
         console.log('🎉 Fetching occasions...');
         const occasionsResponse = await apiCall('/occasions');
         
         if (occasionsResponse.ok) {
           const occasionsData = await occasionsResponse.json();
-          console.log('🎉 Occasions data:', occasionsData);
+          console.log('🎉 Occasions data received:', occasionsData);
           
           const occasionsObj = {};
-          if (Array.isArray(occasionsData)) {
+          if (Array.isArray(occasionsData) && occasionsData.length > 0) {
             occasionsData.forEach(occasion => {
-              occasionsObj[occasion.name] = occasion.code;
+              if (occasion.name && occasion.code) {
+                occasionsObj[occasion.name] = occasion.code;
+              }
             });
           }
           
-          // Add default if empty
+          // Ensure at least General exists
           if (Object.keys(occasionsObj).length === 0) {
+            occasionsObj['General'] = 'GEN';
+          } else if (!occasionsObj['General']) {
             occasionsObj['General'] = 'GEN';
           }
           
           console.log('🎉 Processed occasions:', occasionsObj);
           setOccasions(occasionsObj);
-          occasionMap = occasionsObj; // Update global variable
+          occasionMap = occasionsObj;
         } else {
-          console.warn('⚠️ Occasions fetch failed, using defaults');
+          console.warn('⚠️ Occasions fetch failed, using minimal default');
           const defaultOccasions = { 'General': 'GEN' };
           setOccasions(defaultOccasions);
           occasionMap = defaultOccasions;
@@ -893,20 +991,20 @@ useEffect(() => {
         occasionMap = defaultOccasions;
       }
 
-      // Fetch items
+      // ===== FETCH ITEMS =====
       try {
         console.log('📦 Fetching items...');
         const itemsResponse = await apiCall('/items');
         
         if (itemsResponse.ok) {
           const itemsData = await itemsResponse.json();
-          console.log('📦 Items data count:', itemsData.length);
+          console.log('📦 Items data received, count:', Array.isArray(itemsData) ? itemsData.length : 'invalid format');
           
           if (Array.isArray(itemsData)) {
             setItems(itemsData);
-            itemList = itemsData; // Update global variable
+            itemList = itemsData;
           } else {
-            console.warn('⚠️ Items data is not an array:', itemsData);
+            console.warn('⚠️ Items data is not an array, using empty array');
             setItems([]);
             itemList = [];
           }
@@ -922,19 +1020,35 @@ useEffect(() => {
       }
 
       console.log('✅ Master data fetch completed successfully');
+      console.log('📊 Final state summary:', {
+        user: finalUserData,
+        branchesCount: Object.keys(branchesObj).length,
+        occasionsCount: Object.keys(occasions).length,
+        itemsCount: itemList.length
+      });
+      
       setIsLoadingData(false);
       
     } catch (error) {
       console.error('❌ Error in fetchMasterData:', error);
-      setMessage('⚠️ Failed to load master data: ' + error.message);
+      setMessage(`⚠️ Failed to load system data: ${error.message}`);
       setIsLoadingData(false);
       
-      // Set fallback values
+      // Set minimal fallback values to prevent app from breaking
       setBrandDetails({ displayName: 'Order Management', name: 'Brand' });
       setCurrentUser(prev => ({
         ...prev,
-        branch: 'Unknown Branch'
+        branch: prev.branch || 'Unknown Branch',
+        branchCode: prev.branchCode || 'XX',
+        role: prev.role || 'staff'
       }));
+      
+      // Set minimal occasions if none exist
+      if (Object.keys(occasions).length === 0) {
+        const minimalOccasions = { 'General': 'GEN' };
+        setOccasions(minimalOccasions);
+        occasionMap = minimalOccasions;
+      }
     }
   };
   

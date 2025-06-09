@@ -258,28 +258,46 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
   }
 };
   
-  // Function to generate a unique order number
-  const generateUniqueOrderNumber = async () => {
+  // Replace your generateUniqueOrderNumber function with this:
+const generateUniqueOrderNumber = async () => {
   if (editingOrderId) return;
 
-  // For admin: use selectedBranch if available, otherwise use current branch
-  // For staff: always use current branch
-  const activeBranch = currentUser.role === 'admin' && selectedBranch 
-    ? selectedBranch 
-    : currentUser.branch;
+  // ✅ FIXED: Simplified branch selection - always use currentUser.branch for staff
+  let activeBranch;
+  let branchCode;
+  
+  if (currentUser.role === 'admin' && selectedBranch) {
+    // Admin has selected a specific branch
+    activeBranch = selectedBranch;
+    branchCode = branches[selectedBranch];
+  } else {
+    // Use current user's branch (works for both admin and staff)
+    activeBranch = currentUser.branch;
+    branchCode = branches[currentUser.branch];
+  }
+  
+  console.log('🔢 Generating order number:', {
+    userRole: currentUser.role,
+    activeBranch,
+    branchCode,
+    availableBranches: Object.keys(branches)
+  });
     
-  if (!activeBranch || activeBranch === 'Loading...') return;
-    
-  const branchCode = branches[activeBranch] || 'XX';
+  if (!activeBranch || activeBranch === 'Loading...' || !branchCode) {
+    console.log('❌ Cannot generate order number - invalid branch info');
+    setOrderInfo(prev => ({ 
+      ...prev, 
+      orderPrefix: 'XX-GEN', 
+      orderNumber: '001' 
+    }));
+    return;
+  }
+  
   const currentOccasion = orderInfo.occasion || 'General';
   const occasionPrefix = occasions[currentOccasion] || 'GEN';
   const prefix = `${branchCode}-${occasionPrefix}`;
 
-  console.log('🔢 Generating order number for:', {
-    activeBranch,
-    branchCode,
-    prefix
-  });
+  console.log('🔢 Using prefix:', prefix);
 
   try {
     const response = await apiCall(`/orders/last-number/${encodeURIComponent(prefix)}`);
@@ -292,7 +310,9 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
         orderPrefix: prefix, 
         orderNumber: nextNumber 
       }));
+      console.log('✅ Generated order number:', `${prefix}-${nextNumber}`);
     } else {
+      console.log('⚠️ API call failed, using default');
       setOrderInfo(prev => ({ 
         ...prev, 
         orderPrefix: prefix, 
@@ -466,7 +486,8 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
     }
   };
   
-  const handleOrderChange = (e) => {
+  // Also fix your handleOrderChange function:
+const handleOrderChange = (e) => {
   const { name, value } = e.target;
   if (name === 'occasion') {
     if (value === '__add_new__') {
@@ -474,17 +495,27 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
       return;
     }
     
-    // Use selected branch for admin, current branch for staff
-    // In handleSubmit, update the orderData object:
-const activeBranch = currentUser.role === 'admin' && selectedBranch 
-  ? selectedBranch 
-  : currentUser.branch;
+    // ✅ FIXED: Simplified branch logic
+    let activeBranch;
+    let branchCode;
+    
+    if (currentUser.role === 'admin' && selectedBranch) {
+      activeBranch = selectedBranch;
+      branchCode = branches[selectedBranch];
+    } else {
+      activeBranch = currentUser.branch;
+      branchCode = branches[currentUser.branch];
+    }
+    
+    console.log('🎉 Occasion changed:', {
+      newOccasion: value,
+      activeBranch,
+      branchCode
+    });
       
-    const branchCode = (activeBranch && activeBranch !== 'Loading...') 
-      ? branches[activeBranch] || 'XX' 
-      : 'XX';
+    const finalBranchCode = branchCode || 'XX';
     const occasionPrefix = occasions[value] || value.slice(0, 3).toUpperCase();
-    const fullPrefix = `${branchCode}-${occasionPrefix}`;
+    const fullPrefix = `${finalBranchCode}-${occasionPrefix}`;
     
     setOrderInfo({ ...orderInfo, occasion: value, orderPrefix: fullPrefix });
   } else {
@@ -639,7 +670,7 @@ const activeBranch = currentUser.role === 'admin' && selectedBranch
 
     const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
 
-    // In handleSubmit function, replace the orderData object with:
+    // And fix your handleSubmit function's orderData:
 const orderData = {
   customerName: customer.name,
   phone: customer.phone,
@@ -650,13 +681,13 @@ const orderData = {
   state: customer.state,
   ...orderInfo,
   orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-  // Use selected branch for admin, current branch for staff
+  // ✅ FIXED: Simplified branch selection
   branch: currentUser.role === 'admin' && selectedBranch 
     ? selectedBranch 
     : currentUser.branch,
   branchCode: currentUser.role === 'admin' && selectedBranch
     ? branches[selectedBranch] 
-    : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]),
+    : branches[currentUser.branch],
   createdBy: currentUser.displayName || currentUser.username || 'Unknown',
   boxes: boxes.map(calculateTotals),
   notes,
@@ -1588,32 +1619,32 @@ useEffect(() => {
   <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
     {/* Prefix Field - Dropdown for admin, disabled input for staff */}
     {currentUser.role === 'admin' ? (
-      <select
-        value={orderInfo.orderPrefix.split('-')[0] || 'XX'}
-        onChange={(e) => {
-  const newPrefix = e.target.value;
-  const occasionCode = orderInfo.orderPrefix.split('-')[1] || 'GEN';
-  const fullPrefix = `${newPrefix}-${occasionCode}`;
-  
-  // Find the branch name for this code
-  const selectedBranchName = Object.keys(branches).find(
-    name => branches[name] === newPrefix
-  );
-  
-  console.log('🏢 Admin selected branch:', selectedBranchName, 'Code:', newPrefix);
-  
-  setSelectedBranch(selectedBranchName); // ADD THIS LINE
-  
-  setOrderInfo(prev => ({
-    ...prev,
-    orderPrefix: fullPrefix
-  }));
-}}
-        disabled={!editOrderNumber}
-        style={{ width: '80px' }}
-        className={orderNumberError ? 'error-field' : ''}
-        title="Branch Code"
-      >
+  <select
+    value={orderInfo.orderPrefix.split('-')[0] || 'XX'}
+    onChange={(e) => {
+      const newPrefix = e.target.value;
+      const occasionCode = orderInfo.orderPrefix.split('-')[1] || 'GEN';
+      const fullPrefix = `${newPrefix}-${occasionCode}`;
+      
+      // Find the branch name for this code
+      const selectedBranchName = Object.keys(branches).find(
+        name => branches[name] === newPrefix
+      );
+      
+      console.log('🏢 Admin selected branch:', selectedBranchName, 'Code:', newPrefix);
+      
+      setSelectedBranch(selectedBranchName); // ADD THIS LINE
+      
+      setOrderInfo(prev => ({
+        ...prev,
+        orderPrefix: fullPrefix
+      }));
+    }}
+    disabled={!editOrderNumber}
+    style={{ width: '80px' }}
+    className={orderNumberError ? 'error-field' : ''}
+    title="Branch Code"
+  >
         {Object.entries(branches)
           .sort(([,a], [,b]) => a.localeCompare(b)) // Sort by branch code alphabetically
           .map(([branchName, branchCode]) => (
