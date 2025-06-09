@@ -244,18 +244,21 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
   const checkOrderNumberUnique = async (orderPrefix, orderNumber) => {
   try {
     const fullOrderNumber = `${orderPrefix}-${orderNumber}`;
+    console.log('🔍 Checking uniqueness for:', fullOrderNumber);
+    
     const response = await apiCall(`/orders/check-number?orderNumber=${encodeURIComponent(fullOrderNumber)}`);
     
     if (!response.ok) {
       console.error(`Check order number failed with status: ${response.status}`);
-      return true;
+      return true; // Assume unique if check fails
     }
     
     const data = await response.json();
+    console.log('📊 Uniqueness check result:', data);
     return !data.exists;
   } catch (error) {
     console.error('Error in order number uniqueness check:', error);
-    return true;
+    return true; // Assume unique if error
   }
 };
   
@@ -1270,164 +1273,155 @@ useEffect(() => {
 
   // ===== RENDER =====
   return (
-    <div className="loading-message">
-  🔄 Loading master data (branches, occasions, items)...
-</div>
-      )}
+  <div className="form-wrapper">
+    {/* Loading Message */}
+    {isLoadingData && (
+      <div className="loading-message">
+        🔄 Loading master data (branches, occasions, items)...
+      </div>
+    )}
 
-      {!isValidBranch(currentUser.branch) && (
-  <div style={{ 
-    padding: '10px', 
-    backgroundColor: '#ffebee', 
-    border: '1px solid #f44336', 
-    borderRadius: '5px', 
-    marginBottom: '15px',
-    color: '#c62828'
-  }}>
-    ⚠️ Warning: Invalid branch detected ({currentUser.branch}). Please contact administrator.
-  </div>
-)}
-      
-      {/* Floating Order Summary - Only shown for multiple boxes */}
-      {hasMultipleBoxes && (
-        <div className="order-float-summary" style={{ height: isOrderSummaryMinimized ? 'auto' : 'unset' }}>
-          <div className="summary-header">
-            <h4 style={{ margin: 0 }}>
-              Order Summary 
-              <span className="summary-badge">{totalBoxCount} boxes</span>
-            </h4>
-            <div style={{ display: 'flex', gap: '5px' }}>
+    {/* Invalid Branch Warning */}
+    {!isValidBranch(currentUser.branch) && (
+      <div className="warning-message">
+        ⚠️ Warning: Invalid branch detected ({currentUser.branch}). Please contact administrator.
+      </div>
+    )}
+    
+    {/* Floating Order Summary - Only shown for multiple boxes */}
+    {hasMultipleBoxes && (
+      <div className="order-float-summary" style={{ height: isOrderSummaryMinimized ? 'auto' : 'unset' }}>
+        <div className="summary-header">
+          <h4 style={{ margin: 0 }}>
+            Order Summary 
+            <span className="summary-badge">{totalBoxCount} boxes</span>
+          </h4>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            <button 
+              onClick={toggleOrderSummaryMinimize} 
+              className="btn-secondary" 
+              style={{ padding: '5px 10px' }}
+              title={isOrderSummaryMinimized ? "Expand" : "Minimize"}
+            >
+              {isOrderSummaryMinimized ? '⬆️' : '⬇️'}
+            </button>
+            {!isOrderSummaryMinimized && (
               <button 
-                onClick={toggleOrderSummaryMinimize} 
+                onClick={toggleOrderSummary} 
                 className="btn-secondary" 
                 style={{ padding: '5px 10px' }}
-                title={isOrderSummaryMinimized ? "Expand" : "Minimize"}
               >
-                {isOrderSummaryMinimized ? '⬆️' : '⬇️'}
+                {showOrderSummary ? 'Hide Details' : 'Show Details'}
               </button>
-              {!isOrderSummaryMinimized && (
-                <button 
-                  onClick={toggleOrderSummary} 
-                  className="btn-secondary" 
-                  style={{ padding: '5px 10px' }}
-                >
-                  {showOrderSummary ? 'Hide Details' : 'Show Details'}
-                </button>
-              )}
-            </div>
+            )}
           </div>
-          
-          {!isOrderSummaryMinimized && (
-            <>
-              {showOrderSummary ? (
-                <>
-                  <table style={{ marginBottom: '10px' }}>
-                    <thead>
-                      <tr>
-                        <th>Box Type</th>
-                        <th>Box Count</th>
-                        <th>Box Discount</th>
-                        <th>Total Amount</th>
+        </div>
+        
+        {!isOrderSummaryMinimized && (
+          <>
+            {showOrderSummary ? (
+              <>
+                <table style={{ marginBottom: '10px' }}>
+                  <thead>
+                    <tr>
+                      <th>Box Type</th>
+                      <th>Box Count</th>
+                      <th>Box Discount</th>
+                      <th>Total Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boxes.map((box, index) => (
+                      <tr key={box.id}>
+                        <td>Box #{index + 1}</td>
+                        <td>{box.boxCount}</td>
+                        <td>₹{box.discount > 0 ? (box.discount * box.boxCount).toFixed(2) : '0'}</td>
+                        <td>₹{calculateBoxTotal(box)}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {boxes.map((box, index) => (
-                        <tr key={box.id}>
-                          <td>Box #{index + 1}</td>
-                          <td>{box.boxCount}</td>
-                          <td>₹{box.discount > 0 ? (box.discount * box.boxCount).toFixed(2) : '0'}</td>
-                          <td>₹{calculateBoxTotal(box)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{ fontWeight: 'bold', backgroundColor: '#eee' }}>
-                        <td>Total</td>
-                        <td>{totalBoxCount}</td>
-                        <td>₹{boxes.reduce((sum, box) => sum + (box.discount * box.boxCount), 0).toFixed(2)}</td>
-                        <td>₹{boxes.reduce((sum, box) => sum + calculateBoxTotal(box), 0)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </>
-              ) : (
-                <div style={{ marginBottom: '10px' }}>
-                  {boxes.map((box, index) => (
-                    <div className="summary-row" key={box.id}>
-                      <span>Box #{index + 1} ({box.boxCount} boxes)</span>
-                      <span>₹{calculateTotals(box).total}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {hasDiscount && (
-                <div className="summary-row">
-                  <span>Discount:</span>
-                  <span>- ₹{extraDiscount.type === 'percentage' 
-                    ? ((calculateGrandTotal() + extraDiscount.value) * extraDiscount.value / 100).toFixed(2)
-                    : extraDiscount.value}
-                  </span>
-                </div>
-              )}
-              
-              <div className="summary-row summary-total">
-                <span>Amount Payable:</span>
-                <span>₹{balance}</span>
+                    ))}
+                    <tr style={{ fontWeight: 'bold', backgroundColor: '#eee' }}>
+                      <td>Total</td>
+                      <td>{totalBoxCount}</td>
+                      <td>₹{boxes.reduce((sum, box) => sum + (box.discount * box.boxCount), 0).toFixed(2)}</td>
+                      <td>₹{boxes.reduce((sum, box) => sum + calculateBoxTotal(box), 0)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <div style={{ marginBottom: '10px' }}>
+                {boxes.map((box, index) => (
+                  <div className="summary-row" key={box.id}>
+                    <span>Box #{index + 1} ({box.boxCount} boxes)</span>
+                    <span>₹{calculateTotals(box).total}</span>
+                  </div>
+                ))}
               </div>
-              
-              {hasAdvance && (
-                <>
-                  <div className="summary-row">
-                    <span>Advance Paid:</span>
-                    <span>₹{advancePaid}</span>
-                  </div>
-                  <div className="summary-row summary-total">
-                    <span>Balance:</span>
-                    <span>₹{balance}</span>
-                  </div>
-                </>
-              )}
-            </>
-          )}
+            )}
+            
+            {hasDiscount && (
+              <div className="summary-row">
+                <span>Discount:</span>
+                <span>- ₹{extraDiscount.type === 'percentage' 
+                  ? ((calculateGrandTotal() + extraDiscount.value) * extraDiscount.value / 100).toFixed(2)
+                  : extraDiscount.value}
+                </span>
+              </div>
+            )}
+            
+            <div className="summary-row summary-total">
+              <span>Amount Payable:</span>
+              <span>₹{balance}</span>
+            </div>
+            
+            {hasAdvance && (
+              <>
+                <div className="summary-row">
+                  <span>Advance Paid:</span>
+                  <span>₹{advancePaid}</span>
+                </div>
+                <div className="summary-row summary-total">
+                  <span>Balance:</span>
+                  <span>₹{balance}</span>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    )}
+
+    {/* Customer Information Card */}
+    <div className="card">
+      {editingOrderId && (
+        <div className="editing-notice">
+          ✏️ You are editing an existing order. Changes will overwrite the previous version.
         </div>
       )}
-
-      <div className="card">
-        {editingOrderId && (
-          <div style={{ padding: '10px', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', borderRadius: '5px', marginBottom: '15px' }}>
-            ✏️ You are editing an existing order. Changes will overwrite the previous version.
-          </div>
-        )}
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h2>Customer Information</h2>
-          <div style={{ 
-            padding: '8px 12px', 
-            backgroundColor: '#e3f2fd', 
-            borderRadius: '20px', 
-            fontSize: '0.9rem',
-            color: '#1976d2',
-            fontWeight: 'bold'
-          }}>
-            📍 {currentUser.branch} ({branches[currentUser.branch] || 'XX'})
-          </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <h2>Customer Information</h2>
+        <div className="branch-badge">
+          📍 {currentUser.branch} ({branches[currentUser.branch] || 'XX'})
         </div>
-        
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
-          <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+        <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
+      </div>
+      
+      <div className="form-grid">
+        <div className="form-group">
+          <label>Name<span className="required">*</span></label>
+          <input 
+            name="name" 
+            value={customer.name} 
+            onChange={handleCustomerChange} 
+            className={validationErrors.name ? 'error-field' : ''}
+            placeholder="Enter full name"
+          />
+          {validationErrors.name && <div className="error-message">{validationErrors.name}</div>}
         </div>
-        
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Name<span className="required">*</span></label>
-            <input 
-  name="name" 
-  value={customer.name} 
-  onChange={handleCustomerChange} 
-  className={validationErrors.name ? 'error-field' : ''}
-  placeholder="Enter full name"
-/>
-            {validationErrors.name && <div className="error-message">{validationErrors.name}</div>}
-          </div>
           <div className="form-group">
             <label>Phone<span className="required">*</span></label>
             <input 

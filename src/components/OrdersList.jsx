@@ -12,15 +12,17 @@ const Orders = () => {
       try {
         const token = localStorage.getItem('authToken');
         
-        // ✅ FIXED: Use correct endpoint based on user role
-        let endpoint;
-        if (user?.role === 'admin') {
-          endpoint = '/api/orders/all'; // Admin sees all orders
-        } else {
-          endpoint = `/api/orders/${user?.branchCode?.toLowerCase()}`; // Staff sees only their branch
-        }
-        
-        console.log('📡 Fetching orders from:', endpoint);
+        // ✅ REPLACE with this:
+let endpoint;
+if (user?.role === 'admin') {
+  endpoint = '/api/orders/all';
+} else {
+  // Use the exact branch code from user without modification
+  endpoint = `/api/orders/${user?.branchCode}`;
+}
+
+console.log('📡 Fetching from endpoint:', endpoint);
+console.log('👤 User data:', { role: user?.role, branchCode: user?.branchCode });
         
         const res = await fetch(endpoint, {
           headers: {

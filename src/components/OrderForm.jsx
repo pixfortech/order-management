@@ -244,18 +244,24 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
   const checkOrderNumberUnique = async (orderPrefix, orderNumber) => {
   try {
     const fullOrderNumber = `${orderPrefix}-${orderNumber}`;
+    console.log('🔍 Checking uniqueness for:', fullOrderNumber);
+    
+    // Add delay to prevent race condition
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
     const response = await apiCall(`/orders/check-number?orderNumber=${encodeURIComponent(fullOrderNumber)}`);
     
     if (!response.ok) {
-      console.error(`Check order number failed with status: ${response.status}`);
-      return true;
+      console.error(`Check failed with status: ${response.status}`);
+      return true; // Assume unique if check fails
     }
     
     const data = await response.json();
+    console.log('📊 Check result:', data);
     return !data.exists;
   } catch (error) {
-    console.error('Error in order number uniqueness check:', error);
-    return true;
+    console.error('Check error:', error);
+    return true; // Assume unique if error
   }
 };
   
