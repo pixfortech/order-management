@@ -86,69 +86,98 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   }, [isAdmin]);
 
   const fetchOrders = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const token = localStorage.getItem('authToken');
-      
-      // Build the correct endpoint
-      let endpoint;
-      if (isAdmin) {
-        if (filters.branch) {
-          // Admin filtering by specific branch
-          endpoint = `/api/orders/${filters.branch.toLowerCase()}`;
-        } else {
-          // Admin viewing all orders
-          endpoint = `/api/orders/all`;
-        }
-      } else {
-        // Staff user - only their branch
-        endpoint = `/api/orders/${user?.branchCode?.toLowerCase()}`;
+  try {
+    setIsLoading(true);
+    const token = localStorage.getItem('authToken');
+    
+    // ✅ ADD PROPER BASE URL LOGIC (same as OrdersList.jsx)
+    const getApiUrl = () => {
+      if (process.env.REACT_APP_API_URL) {
+        return process.env.REACT_APP_API_URL;
       }
-      
-      // Prepare query parameters
-      const queryParams = {};
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value && value.trim() && key !== 'branch') { // Exclude branch from query params
-          queryParams[key] = value.trim();
-        }
-      });
-      
-      console.log('Fetching from endpoint:', endpoint, 'with params:', queryParams);
-      
-      const response = await axios.get(endpoint, {
-        params: queryParams,
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      // Ensure we get actual data from database
-      const ordersData = response.data;
-      if (Array.isArray(ordersData)) {
-        // Keep all orders that have an ID and customer name
-        const realOrders = ordersData.filter(order => 
-          order._id && 
-          order.customerName && 
-          order.customerName.trim() !== ''
-        );
-        setOrders(realOrders);
-      } else if (ordersData && Array.isArray(ordersData.orders)) {
-        const realOrders = ordersData.orders.filter(order => 
-          order._id && 
-          order.customerName && 
-          order.customerName.trim() !== ''
-        );
-        setOrders(realOrders);
-      } else {
-        console.warn('API returned unexpected data format:', ordersData);
-        setOrders([]);
+      if (window.location.hostname === 'localhost') {
+        return 'http://localhost:5000';
       }
-      
-    } catch (err) {
-      console.error('Error fetching orders:', err);
-      setOrders([]);
-    } finally {
-      setIsLoading(false);
+      return 'https://order-management-fbre.onrender.com';
+    };
+    
+    const baseUrl = getApiUrl();
+    
+    // Build the correct endpoint with full URL
+    let endpoint;
+    if (isAdmin) {
+      if (filters.branch) {
+        // Admin filtering by specific branch
+        endpoint = `${baseUrl}/api/orders/${filters.branch.toLowerCase()}`;
+      } else {
+        // Admin viewing all orders
+        endpoint = `${baseUrl}/api/orders/all`;
+      }
+    } else {
+      // Staff user - only their branch
+      endpoint = `${baseUrl}/api/orders/${user?.branchCode?.toLowerCase()}`;
     }
-  }, [filters, isAdmin, user?.branchCode]);
+    
+    // Prepare query parameters
+    const queryParams = {};
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value && value.trim() && key !== 'branch') {
+        queryParams[key] = value.trim();
+      }
+    });
+    
+    console.log('🔍 OrderTabs - Fetching from endpoint:', endpoint, 'with params:', queryParams);
+    console.log('👤 OrderTabs - User data:', { role: user?.role, branchCode: user?.branchCode });
+    
+    // ✅ REPLACE AXIOS WITH FETCH for consistency
+    const response = await fetch(endpoint + (Object.keys(queryParams).length ? '?' + new URLSearchParams(queryParams) : ''), {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('📥 OrderTabs - Response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ OrderTabs - API Error:', errorText);
+      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+    }
+    
+    const ordersData = await response.json();
+    console.log('📊 OrderTabs - Raw orders data:', ordersData);
+    
+    // Ensure we get actual data from database
+    if (Array.isArray(ordersData)) {
+      // Keep all orders that have an ID and customer name
+      const realOrders = ordersData.filter(order => 
+        order._id && 
+        order.customerName && 
+        order.customerName.trim() !== ''
+      );
+      console.log('📋 OrderTabs - Filtered orders count:', realOrders.length);
+      setOrders(realOrders);
+    } else if (ordersData && Array.isArray(ordersData.orders)) {
+      const realOrders = ordersData.orders.filter(order => 
+        order._id && 
+        order.customerName && 
+        order.customerName.trim() !== ''
+      );
+      console.log('📋 OrderTabs - Filtered orders count:', realOrders.length);
+      setOrders(realOrders);
+    } else {
+      console.warn('❌ OrderTabs - API returned unexpected data format:', ordersData);
+      setOrders([]);
+    }
+    
+  } catch (err) {
+    console.error('❌ OrderTabs - Error fetching orders:', err);
+    setOrders([]);
+  } finally {
+    setIsLoading(false);
+  }
+}, [filters, isAdmin, user?.branchCode]);
 
   useEffect(() => {
     fetchOrders();

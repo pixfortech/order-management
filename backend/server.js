@@ -17,11 +17,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors({
-  origin: [
+  /*origin: [
     'http://localhost:3000',
     'https://order-management-six-liart.vercel.app', // Your actual frontend URL
     // Add other allowed origins
-  ],
+  ],*/
+  origin: true,
   credentials: true
 }));
 app.use(express.json());

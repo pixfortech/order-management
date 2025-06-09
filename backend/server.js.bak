@@ -16,7 +16,14 @@ const ordersRoutes = require('./routes/orders'); // ADD THIS LINE
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://order-management-six-liart.vercel.app', // Your actual frontend URL
+    // Add other allowed origins
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // API Health check

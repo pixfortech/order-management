@@ -86,71 +86,69 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   }, [isAdmin]);
 
   const fetchOrders = useCallback(async () => {
-  try {
-    setIsLoading(true);
-    const token = localStorage.getItem('authToken');
-    
-    // Build the correct endpoint
-    let endpoint;
-    if (isAdmin) {
-      if (filters.branch) {
-        // Admin filtering by specific branch
-        endpoint = `/api/orders/${filters.branch.toLowerCase()}`;
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('authToken');
+      
+      // Build the correct endpoint
+      let endpoint;
+      if (isAdmin) {
+        if (filters.branch) {
+          // Admin filtering by specific branch
+          endpoint = `/api/orders/${filters.branch.toLowerCase()}`;
+        } else {
+          // Admin viewing all orders
+          endpoint = `/api/orders/all`;
+        }
       } else {
-        // Admin viewing all orders - you need to implement this endpoint
-        endpoint = `/api/orders/all`;
+        // Staff user - only their branch
+        endpoint = `/api/orders/${user?.branchCode?.toLowerCase()}`;
       }
-    } else {
-      // Staff user - only their branch
-      endpoint = `/api/orders/${user?.branchCode?.toLowerCase()}`;
-    }
-    
-    // Prepare query parameters
-    const queryParams = {};
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value && value.trim() && key !== 'branch') { // Exclude branch from query params
-        queryParams[key] = value.trim();
+      
+      // Prepare query parameters
+      const queryParams = {};
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value.trim() && key !== 'branch') { // Exclude branch from query params
+          queryParams[key] = value.trim();
+        }
+      });
+      
+      console.log('Fetching from endpoint:', endpoint, 'with params:', queryParams);
+      
+      const response = await axios.get(endpoint, {
+        params: queryParams,
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // Ensure we get actual data from database
+      const ordersData = response.data;
+      if (Array.isArray(ordersData)) {
+        // Keep all orders that have an ID and customer name
+        const realOrders = ordersData.filter(order => 
+          order._id && 
+          order.customerName && 
+          order.customerName.trim() !== ''
+        );
+        setOrders(realOrders);
+      } else if (ordersData && Array.isArray(ordersData.orders)) {
+        const realOrders = ordersData.orders.filter(order => 
+          order._id && 
+          order.customerName && 
+          order.customerName.trim() !== ''
+        );
+        setOrders(realOrders);
+      } else {
+        console.warn('API returned unexpected data format:', ordersData);
+        setOrders([]);
       }
-    });
-    
-    console.log('Fetching from endpoint:', endpoint, 'with params:', queryParams);
-    
-    const response = await axios.get(endpoint, {
-      params: queryParams,
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    
-    // Ensure we get actual data from database
-    const ordersData = response.data;
-    if (Array.isArray(ordersData)) {
-      // Filter out any placeholder/empty orders
-      const realOrders = ordersData.filter(order => 
-        order._id && 
-        order.customerName && 
-        order.customerName.trim() !== '' &&
-        order.customerName !== 'Test Customer'
-      );
-      setOrders(realOrders);
-    } else if (ordersData && Array.isArray(ordersData.orders)) {
-      const realOrders = ordersData.orders.filter(order => 
-        order._id && 
-        order.customerName && 
-        order.customerName.trim() !== '' &&
-        order.customerName !== 'Test Customer'
-      );
-      setOrders(realOrders);
-    } else {
-      console.warn('API returned unexpected data format:', ordersData);
+      
+    } catch (err) {
+      console.error('Error fetching orders:', err);
       setOrders([]);
+    } finally {
+      setIsLoading(false);
     }
-    
-  } catch (err) {
-    console.error('Error fetching orders:', err);
-    setOrders([]);
-  } finally {
-    setIsLoading(false);
-  }
-}, [filters, isAdmin, user?.branchCode]);
+  }, [filters, isAdmin, user?.branchCode]);
 
   useEffect(() => {
     fetchOrders();
@@ -180,37 +178,38 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   };
 
   const handleProgressChange = async (order, value) => {
-  try {
-    const token = localStorage.getItem('authToken');
-    
-    // Use the correct endpoint format matching your API structure
-    const branchCode = order.branchCode?.toLowerCase() || user?.branchCode?.toLowerCase();
-    const endpoint = `/api/orders/${branchCode}/${order._id}`;
-    
-    console.log('Updating order progress:', endpoint, { orderProgress: value });
-    
-    const response = await axios.put(endpoint, 
-      { orderProgress: value },
-      { headers: { 'Authorization': `Bearer ${token}` } }
-    );
-    
-    if (response.status === 200) {
-      fetchOrders(); // Refresh the orders list
+    try {
+      const token = localStorage.getItem('authToken');
+      
+      // Use the correct endpoint format matching your API structure
+      const branchCode = order.branchCode?.toLowerCase() || user?.branchCode?.toLowerCase();
+      const endpoint = `/api/orders/${branchCode}/${order._id}`;
+      
+      console.log('Updating order progress:', endpoint, { orderProgress: value });
+      
+      const response = await axios.put(endpoint, 
+        { orderProgress: value },
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      
+      if (response.status === 200) {
+        fetchOrders(); // Refresh the orders list
+      }
+    } catch (err) {
+      console.error('Progress update failed:', err);
+      alert(`Failed to update progress: ${err.response?.data?.message || err.message}`);
     }
-  } catch (err) {
-    console.error('Progress update failed:', err);
-    alert(`Failed to update progress: ${err.response?.data?.message || err.message}`);
-  }
-};
+  };
 
   const hasChangelog = (orderId) => changelogData?.[orderId]?.length >= 1;
 
   const groupSubOrders = () => {
-	  // Safety check: ensure orders is an array
-  if (!Array.isArray(orders)) {
-    console.warn('Orders is not an array:', orders);
-    return {};
-  }
+    // Safety check: ensure orders is an array
+    if (!Array.isArray(orders)) {
+      console.warn('Orders is not an array:', orders);
+      return {};
+    }
+    
     const grouped = {};
     orders.forEach(order => {
       const base = order.orderNumber.split('-').slice(0, 2).join('-');
@@ -378,147 +377,97 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
           </div>
         )}
 
-        {/* Action Buttons - Updated structure */}
-<div className="filter-group">
-  <label>&nbsp;</label> {/* Empty label for alignment */}
-  <div className="filter-actions">
-    <button 
-      onClick={fetchOrders} 
-      title="Search" 
-      className="search-btn"
-      disabled={isLoading}
-    >
-      {isLoading ? '...' : <FaSearch />} Search
-    </button>
-    <button 
-      onClick={clearFilters} 
-      title="Clear Filters" 
-      className="clear-btn"
-    >
-      Clear
-    </button>
-  </div>
-</div>
-
-</div>
+        {/* Action Buttons */}
+        <div className="filter-group">
+          <label>&nbsp;</label> {/* Empty label for alignment */}
+          <div className="filter-actions">
+            <button 
+              onClick={fetchOrders} 
+              title="Search" 
+              className="search-btn"
+              disabled={isLoading}
+            >
+              {isLoading ? '...' : <FaSearch />} Search
+            </button>
+            <button 
+              onClick={clearFilters} 
+              title="Clear Filters" 
+              className="clear-btn"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div> {/* This was the missing closing div */}
 
       {isLoading ? (
-  <div className="loading-container">
-    Loading orders...
-  </div>
-) : orders.length === 0 ? (
-  <div className="empty-state">
-    No orders found
-  </div>
-) : (
-  <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Order No.</th>
-              <th>Customer</th>
-              <th>Phone</th>
-              <th>Delivery</th>
-              <th>Time</th>
-              <th>Occasion</th>
-              {/* Branch Column - Only for Admin */}
-              {isAdmin && <th>Branch</th>}
-              <th>Total</th>
-              <th>Status</th>
-              <th>Balance</th>
-              <th>Order Progress</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(groupSubOrders()).flatMap(([baseOrder, { main, subs, boxCount }]) => {
-              const expanded = expandedOrders[baseOrder];
-              const hasMultipleBoxes = boxCount > 1;
-              const fullOrderTotal = subs.reduce((acc, sub) => acc + sub.grandTotal, 0);
-              const fullAdvance = subs.reduce((acc, sub) => acc + sub.advancePaid, 0);
+        <div className="loading-container">
+          Loading orders...
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="empty-state">
+          No orders found
+        </div>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Order No.</th>
+                <th>Customer</th>
+                <th>Phone</th>
+                <th>Delivery</th>
+                <th>Time</th>
+                <th>Occasion</th>
+                {/* Branch Column - Only for Admin */}
+                {isAdmin && <th>Branch</th>}
+                <th>Total</th>
+                <th>Status</th>
+                <th>Balance</th>
+                <th>Order Progress</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(groupSubOrders()).flatMap(([baseOrder, { main, subs, boxCount }]) => {
+                const expanded = expandedOrders[baseOrder];
+                const hasMultipleBoxes = boxCount > 1;
+                const fullOrderTotal = subs.reduce((acc, sub) => acc + sub.grandTotal, 0);
+                const fullAdvance = subs.reduce((acc, sub) => acc + sub.advancePaid, 0);
 
-              return [
-                <tr key={baseOrder} className="main-order">
-                  <td 
-                    onClick={() => hasMultipleBoxes && setExpandedOrders(prev => ({ ...prev, [baseOrder]: !prev[baseOrder] }))}
-                    style={{ cursor: hasMultipleBoxes ? 'pointer' : 'default' }}
-                  >
-                    {hasMultipleBoxes && (expanded ? <FaChevronDown /> : <FaChevronRight />)} {baseOrder}
-                    {hasMultipleBoxes ? ` (${boxCount} boxes)` : ''}
-                  </td>
-                  <td>{main.customerName}</td>
-                  <td>{main.phone}</td>
-                  <td>
-                    <div className="delivery-cell">
-                      <span>{main.deliveryDate}</span>
-                      <span className="badge tag">{getDeliveryTagWithEmoji(main.deliveryDate)}</span>
-                    </div>
-                  </td>
-                  <td>{main.deliveryTime}</td>
-                  <td>{main.occasion}</td>
-                  
-                  {/* Branch Column - Only for Admin */}
-                  {isAdmin && (
-                    <td>{branches[main.branchCode] || main.branch || 'Unknown'}</td>
-                  )}
-                  
-                  <td>₹{fullOrderTotal.toFixed(2)}</td>
-                  <td><span className={`badge ${main.status}`}>{main.status}</span></td>
-                  <td>₹{(fullOrderTotal - fullAdvance).toFixed(2)}</td>
-                  <td>
-                    <select
-                      value={main.orderProgress || ''}
-                      className={`badge progress ${(main.orderProgress || '').toLowerCase()}`}
-                      onChange={(e) => handleProgressChange(main, e.target.value)}
+                return [
+                  <tr key={baseOrder} className="main-order">
+                    <td 
+                      onClick={() => hasMultipleBoxes && setExpandedOrders(prev => ({ ...prev, [baseOrder]: !prev[baseOrder] }))}
+                      style={{ cursor: hasMultipleBoxes ? 'pointer' : 'default' }}
                     >
-                      <option value="">⏳ Pending</option>
-                      <option value="Packed">📦 Packed</option>
-                      <option value="Delivered">🚚 Delivered</option>
-                      <option value="Completed">✅ Completed</option>
-                      <option value="Cancelled">❌ Cancelled</option>
-                    </select>
-                  </td>
-                  <td>
-                    <button onClick={() => handleEdit(main)} title="Edit"><FaEdit /></button>
-                    <button onClick={() => setViewOrder({ ...main, boxViewMode: 'all' })} title="View"><FaEye /></button>
-                    <button onClick={() => handlePrint({ ...main, boxViewMode: 'all' })} title="Print All"><FaPrint /></button>
-                    {isAdmin && hasChangelog(main._id) && (
-                      <button onClick={() => viewChangelog(main._id)} title="Changelog"><FaScroll /></button>
-                    )}
-                    {isAdmin && (
-                      <button onClick={() => deleteOrder(main._id)} title="Delete"><FaTrash /></button>
-                    )}
-                  </td>
-                </tr>,
-                ...(hasMultipleBoxes && expanded ? subs.map((sub, i) => (
-                  <tr key={`${baseOrder}-${sub.subLabel}`} className="sub-order" style={{ backgroundColor: '#fafafa' }}>
-                    <td title={`Box ${i + 1}: ${sub.box.items.map(it => `${it.name} x${it.qty}`).join(', ')}`}>
-                      &nbsp;&nbsp;&nbsp;&nbsp;↳ {baseOrder}{sub.subLabel}
+                      {hasMultipleBoxes && (expanded ? <FaChevronDown /> : <FaChevronRight />)} {baseOrder}
+                      {hasMultipleBoxes ? ` (${boxCount} boxes)` : ''}
                     </td>
-                    <td>{sub.customerName}</td>
-                    <td>{sub.phone}</td>
+                    <td className="customer-cell">{main.customerName}</td>
+                    <td className="phone-cell">{main.phone}</td>
                     <td>
                       <div className="delivery-cell">
-                        <span>{sub.deliveryDate}</span>
-                        <span className="badge tag">{getDeliveryTagWithEmoji(sub.deliveryDate)}</span>
+                        <span className="delivery-date">{main.deliveryDate}</span>
+                        <span className="badge tag">{getDeliveryTagWithEmoji(main.deliveryDate)}</span>
                       </div>
                     </td>
-                    <td>{sub.deliveryTime}</td>
-                    <td>{sub.occasion}</td>
+                    <td>{main.deliveryTime}</td>
+                    <td>{main.occasion}</td>
                     
-                    {/* Branch Column for sub-orders - Only for Admin */}
+                    {/* Branch Column - Only for Admin */}
                     {isAdmin && (
-                      <td>{branches[sub.branchCode] || sub.branch || 'Unknown'}</td>
+                      <td>{branches[main.branchCode] || main.branch || 'Unknown'}</td>
                     )}
                     
-                    <td>₹{sub.grandTotal.toFixed(2)}</td>
-                    <td><span className={`badge ${sub.status}`}>{sub.status}</span></td>
-                    <td>₹{(sub.grandTotal - sub.advancePaid).toFixed(2)}</td>
+                    <td>₹{fullOrderTotal.toFixed(2)}</td>
+                    <td><span className={`badge ${main.status}`}>{main.status}</span></td>
+                    <td>₹{(fullOrderTotal - fullAdvance).toFixed(2)}</td>
                     <td>
                       <select
-                        value={sub.orderProgress || ''}
-                        className={`badge progress ${(sub.orderProgress || '').toLowerCase()}`}
-                        onChange={(e) => handleProgressChange(sub, e.target.value)}
+                        value={main.orderProgress || ''}
+                        className="progress-select"
+                        onChange={(e) => handleProgressChange(main, e.target.value)}
                       >
                         <option value="">⏳ Pending</option>
                         <option value="Packed">📦 Packed</option>
@@ -528,15 +477,69 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
                       </select>
                     </td>
                     <td>
-                      <button onClick={() => handlePrint({ ...sub, boxViewMode: i })} title="Print Box"><FaPrint /></button>
-                      <button onClick={() => setViewOrder({ ...sub, boxViewMode: i })} title="View"><FaEye /></button>
+                      <div className="action-buttons">
+                        <button onClick={() => handleEdit(main)} title="Edit"><FaEdit /></button>
+                        <button onClick={() => setViewOrder({ ...main, boxViewMode: 'all' })} title="View"><FaEye /></button>
+                        <button onClick={() => handlePrint({ ...main, boxViewMode: 'all' })} title="Print All"><FaPrint /></button>
+                        {isAdmin && hasChangelog(main._id) && (
+                          <button onClick={() => viewChangelog(main._id)} title="Changelog"><FaScroll /></button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => deleteOrder(main._id)} title="Delete"><FaTrash /></button>
+                        )}
+                      </div>
                     </td>
-                  </tr>
-                )) : [])
-              ];
-            })}
-          </tbody>
-        </table>
+                  </tr>,
+                  ...(hasMultipleBoxes && expanded ? subs.map((sub, i) => (
+                    <tr key={`${baseOrder}-${sub.subLabel}`} className="sub-order">
+                      <td title={`Box ${i + 1}: ${sub.box.items.map(it => `${it.name} x${it.qty}`).join(', ')}`}>
+                        &nbsp;&nbsp;&nbsp;&nbsp;↳ {baseOrder}{sub.subLabel}
+                      </td>
+                      <td className="customer-cell">{sub.customerName}</td>
+                      <td className="phone-cell">{sub.phone}</td>
+                      <td>
+                        <div className="delivery-cell">
+                          <span className="delivery-date">{sub.deliveryDate}</span>
+                          <span className="badge tag">{getDeliveryTagWithEmoji(sub.deliveryDate)}</span>
+                        </div>
+                      </td>
+                      <td>{sub.deliveryTime}</td>
+                      <td>{sub.occasion}</td>
+                      
+                      {/* Branch Column for sub-orders - Only for Admin */}
+                      {isAdmin && (
+                        <td>{branches[sub.branchCode] || sub.branch || 'Unknown'}</td>
+                      )}
+                      
+                      <td>₹{sub.grandTotal.toFixed(2)}</td>
+                      <td><span className={`badge ${sub.status}`}>{sub.status}</span></td>
+                      <td>₹{(sub.grandTotal - sub.advancePaid).toFixed(2)}</td>
+                      <td>
+                        <select
+                          value={sub.orderProgress || ''}
+                          className="progress-select"
+                          onChange={(e) => handleProgressChange(sub, e.target.value)}
+                        >
+                          <option value="">⏳ Pending</option>
+                          <option value="Packed">📦 Packed</option>
+                          <option value="Delivered">🚚 Delivered</option>
+                          <option value="Completed">✅ Completed</option>
+                          <option value="Cancelled">❌ Cancelled</option>
+                        </select>
+                      </td>
+                      <td>
+                        <div className="action-buttons">
+                          <button onClick={() => handlePrint({ ...sub, boxViewMode: i })} title="Print Box"><FaPrint /></button>
+                          <button onClick={() => setViewOrder({ ...sub, boxViewMode: i })} title="View"><FaEye /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )) : [])
+                ];
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {viewOrder && (
