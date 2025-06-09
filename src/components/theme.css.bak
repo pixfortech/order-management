@@ -1,0 +1,44 @@
+
+:root {
+  --theme-color: #49488D;
+  --background-color: #f9f9ff;
+  --text-color: #222;
+  --border-radius: 8px;
+}
+
+body {
+  background-color: var(--background-color);
+  font-family: 'Poppins', sans-serif;
+  margin: 0;
+  padding: 0;
+  color: var(--text-color);
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--theme-color);
+}
+
+button {
+  background-color: var(--theme-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover {
+  filter: brightness(90%);
+}
+
+input[type='text'],
+input[type='password'],
+input[type='color'] {
+  border: 1px solid #ccc;
+  border-radius: var(--border-radius);
+  padding: 8px 12px;
+  font-size: 1rem;
+  width: 100%;
+  margin-bottom: 12px;
+}

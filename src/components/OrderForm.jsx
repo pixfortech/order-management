@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { saveOrder } from '../api/orderApi';
 import { v4 as uuidv4 } from 'uuid';
 import { FaEdit } from 'react-icons/fa';
+import './OrderForm.css';
 
 // Dynamic data will be fetched from API
 let branchPrefixes = {};
@@ -1269,354 +1270,155 @@ useEffect(() => {
 
   // ===== RENDER =====
   return (
-    <div className="form-wrapper">
-      {isLoadingData && (
-        <div style={{ 
-          padding: '10px', 
-          backgroundColor: '#e3f2fd', 
-          border: '1px solid #2196f3', 
-          borderRadius: '5px', 
-          marginBottom: '15px',
-          color: '#1976d2'
-        }}>
-          🔄 Loading master data (branches, occasions, items)...
-        </div>
-      )}
+  <div className="form-wrapper">
+    {/* Loading Message */}
+    {isLoadingData && (
+      <div className="loading-message">
+        🔄 Loading master data (branches, occasions, items)...
+      </div>
+    )}
 
-      {!isValidBranch(currentUser.branch) && (
-        <div style={{ 
-          padding: '10px', 
-          backgroundColor: '#ffebee', 
-          border: '1px solid #f44336', 
-          borderRadius: '5px', 
-          marginBottom: '15px',
-          color: '#c62828'
-        }}>
-          ⚠️ Warning: Invalid branch detected ({currentUser.branch}). Please contact administrator.
-        </div>
-      )}
-
-      <style>{`
-        button { font-family: 'Poppins', sans-serif; }
-        .error-message { color: #ea5454; font-size: 0.85rem; margin-top: 5px; }
-        .error-field { border: 1px solid #ea5454; background-color: #ffeeee; }
-        .item-header { 
-          display: flex; 
-          font-weight: bold; 
-          margin-bottom: 10px; 
-          background-color: #f0f0f0;
-          padding: 8px 5px;
-          border-radius: 4px;
-        }
-        .item-header > div {
-          padding: 0 5px;
-        }
-        .remove-btn {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          width: 40px;
-          height: 40px;
-          border-radius: 5px;
-          border: none;
-          cursor: pointer;
-          color: white;
-          font-size: 16px;
-          background-color: #ea5454;
-          transition: background-color 0.2s;
-        }
-        .remove-btn:hover {
-          background-color: #d93e3e;
-        }
-        .form-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 15px;
-        }
-        .card {
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          padding: 20px;
-          margin-bottom: 20px;
-        }
-        input, select {
-          width: 100%;
-          padding: 10px;
-          border-radius: 4px;
-          border: 1px solid #ddd;
-          font-size: 16px;
-        }
-        input:read-only, input:disabled {
-          background-color: #f0f0f0;
-          cursor: not-allowed;
-        }
-        label {
-          display: block;
-          margin-bottom: 5px;
-          font-weight: 500;
-        }
-        button {
-          padding: 10px 15px;
-          border: none;
-          border-radius: 4px;
-          background-color: #4CAF50;
-          color: white;
-          cursor: pointer;
-          font-size: 16px;
-          transition: background-color 0.2s;
-        }
-        button:hover {
-          background-color: #45a049;
-        }
-        .btn-secondary {
-          background-color: #f1f1f1;
-          color: #333;
-        }
-        .btn-secondary:hover {
-          background-color: #e1e1e1;
-        }
-        .success {
-          color: #4CAF50;
-        }
-        .error {
-          color: #ea5454;
-        }
-        .modal-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: rgba(0,0,0,0.5);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 1000;
-        }
-        .modal-card {
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          width: 400px;
-          max-width: 90%;
-        }
-        .required {
-          color: #ea5454;
-          margin-left: 3px;
-        }
-        .box-summary {
-          background-color: #f9f9f9;
-          padding: 15px;
-          border-radius: 5px;
-          margin-top: 15px;
-        }
-        table {
-          border: 1px solid #ddd;
-          border-radius: 5px;
-          overflow: hidden;
-          width: 100%;
-        }
-        th {
-          background-color: #f0f0f0;
-          padding: 12px 8px;
-          text-align: left;
-        }
-        td {
-          padding: 10px 8px;
-          border-bottom: 1px solid #eee;
-        }
-        tr:last-child td {
-          border-bottom: none;
-        }
-        .order-float-summary {
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          width: 300px;
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 15px rgba(0,0,0,0.2);
-          padding: 15px;
-          z-index: 900;
-          border-left: 4px solid #4CAF50;
-        }
-        .summary-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 10px;
-          padding-bottom: 10px;
-          border-bottom: 1px solid #eee;
-        }
-        .summary-badge {
-          display: inline-block;
-          background-color: #e2f2e3;
-          color: #4CAF50;
-          padding: 4px 8px;
-          border-radius: 20px;
-          font-size: 0.85rem;
-          margin-left: 5px;
-        }
-        .summary-row {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 5px;
-          font-size: 0.9rem;
-        }
-        .summary-total {
-          font-weight: bold;
-          margin-top: 10px;
-          padding-top: 10px;
-          border-top: 1px dashed #ccc;
-        }
-        .items-count {
-          font-size: 0.85rem;
-          color: #777;
-          margin-top: 5px;
-        }
-      `}</style>
-      
-      {/* Floating Order Summary - Only shown for multiple boxes */}
-      {hasMultipleBoxes && (
-        <div className="order-float-summary" style={{ height: isOrderSummaryMinimized ? 'auto' : 'unset' }}>
-          <div className="summary-header">
-            <h4 style={{ margin: 0 }}>
-              Order Summary 
-              <span className="summary-badge">{totalBoxCount} boxes</span>
-            </h4>
-            <div style={{ display: 'flex', gap: '5px' }}>
+    {/* Invalid Branch Warning */}
+    {!isValidBranch(currentUser.branch) && (
+      <div className="warning-message">
+        ⚠️ Warning: Invalid branch detected ({currentUser.branch}). Please contact administrator.
+      </div>
+    )}
+    
+    {/* Floating Order Summary - Only shown for multiple boxes */}
+    {hasMultipleBoxes && (
+      <div className="order-float-summary" style={{ height: isOrderSummaryMinimized ? 'auto' : 'unset' }}>
+        <div className="summary-header">
+          <h4 style={{ margin: 0 }}>
+            Order Summary 
+            <span className="summary-badge">{totalBoxCount} boxes</span>
+          </h4>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            <button 
+              onClick={toggleOrderSummaryMinimize} 
+              className="btn-secondary" 
+              style={{ padding: '5px 10px' }}
+              title={isOrderSummaryMinimized ? "Expand" : "Minimize"}
+            >
+              {isOrderSummaryMinimized ? '⬆️' : '⬇️'}
+            </button>
+            {!isOrderSummaryMinimized && (
               <button 
-                onClick={toggleOrderSummaryMinimize} 
+                onClick={toggleOrderSummary} 
                 className="btn-secondary" 
                 style={{ padding: '5px 10px' }}
-                title={isOrderSummaryMinimized ? "Expand" : "Minimize"}
               >
-                {isOrderSummaryMinimized ? '⬆️' : '⬇️'}
+                {showOrderSummary ? 'Hide Details' : 'Show Details'}
               </button>
-              {!isOrderSummaryMinimized && (
-                <button 
-                  onClick={toggleOrderSummary} 
-                  className="btn-secondary" 
-                  style={{ padding: '5px 10px' }}
-                >
-                  {showOrderSummary ? 'Hide Details' : 'Show Details'}
-                </button>
-              )}
-            </div>
+            )}
           </div>
-          
-          {!isOrderSummaryMinimized && (
-            <>
-              {showOrderSummary ? (
-                <>
-                  <table style={{ marginBottom: '10px' }}>
-                    <thead>
-                      <tr>
-                        <th>Box Type</th>
-                        <th>Box Count</th>
-                        <th>Box Discount</th>
-                        <th>Total Amount</th>
+        </div>
+        
+        {!isOrderSummaryMinimized && (
+          <>
+            {showOrderSummary ? (
+              <>
+                <table style={{ marginBottom: '10px' }}>
+                  <thead>
+                    <tr>
+                      <th>Box Type</th>
+                      <th>Box Count</th>
+                      <th>Box Discount</th>
+                      <th>Total Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boxes.map((box, index) => (
+                      <tr key={box.id}>
+                        <td>Box #{index + 1}</td>
+                        <td>{box.boxCount}</td>
+                        <td>₹{box.discount > 0 ? (box.discount * box.boxCount).toFixed(2) : '0'}</td>
+                        <td>₹{calculateBoxTotal(box)}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {boxes.map((box, index) => (
-                        <tr key={box.id}>
-                          <td>Box #{index + 1}</td>
-                          <td>{box.boxCount}</td>
-                          <td>₹{box.discount > 0 ? (box.discount * box.boxCount).toFixed(2) : '0'}</td>
-                          <td>₹{calculateBoxTotal(box)}</td>
-                        </tr>
-                      ))}
-                      <tr style={{ fontWeight: 'bold', backgroundColor: '#eee' }}>
-                        <td>Total</td>
-                        <td>{totalBoxCount}</td>
-                        <td>₹{boxes.reduce((sum, box) => sum + (box.discount * box.boxCount), 0).toFixed(2)}</td>
-                        <td>₹{boxes.reduce((sum, box) => sum + calculateBoxTotal(box), 0)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </>
-              ) : (
-                <div style={{ marginBottom: '10px' }}>
-                  {boxes.map((box, index) => (
-                    <div className="summary-row" key={box.id}>
-                      <span>Box #{index + 1} ({box.boxCount} boxes)</span>
-                      <span>₹{calculateTotals(box).total}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {hasDiscount && (
-                <div className="summary-row">
-                  <span>Discount:</span>
-                  <span>- ₹{extraDiscount.type === 'percentage' 
-                    ? ((calculateGrandTotal() + extraDiscount.value) * extraDiscount.value / 100).toFixed(2)
-                    : extraDiscount.value}
-                  </span>
-                </div>
-              )}
-              
-              <div className="summary-row summary-total">
-                <span>Amount Payable:</span>
-                <span>₹{balance}</span>
+                    ))}
+                    <tr style={{ fontWeight: 'bold', backgroundColor: '#eee' }}>
+                      <td>Total</td>
+                      <td>{totalBoxCount}</td>
+                      <td>₹{boxes.reduce((sum, box) => sum + (box.discount * box.boxCount), 0).toFixed(2)}</td>
+                      <td>₹{boxes.reduce((sum, box) => sum + calculateBoxTotal(box), 0)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <div style={{ marginBottom: '10px' }}>
+                {boxes.map((box, index) => (
+                  <div className="summary-row" key={box.id}>
+                    <span>Box #{index + 1} ({box.boxCount} boxes)</span>
+                    <span>₹{calculateTotals(box).total}</span>
+                  </div>
+                ))}
               </div>
-              
-              {hasAdvance && (
-                <>
-                  <div className="summary-row">
-                    <span>Advance Paid:</span>
-                    <span>₹{advancePaid}</span>
-                  </div>
-                  <div className="summary-row summary-total">
-                    <span>Balance:</span>
-                    <span>₹{balance}</span>
-                  </div>
-                </>
-              )}
-            </>
-          )}
+            )}
+            
+            {hasDiscount && (
+              <div className="summary-row">
+                <span>Discount:</span>
+                <span>- ₹{extraDiscount.type === 'percentage' 
+                  ? ((calculateGrandTotal() + extraDiscount.value) * extraDiscount.value / 100).toFixed(2)
+                  : extraDiscount.value}
+                </span>
+              </div>
+            )}
+            
+            <div className="summary-row summary-total">
+              <span>Amount Payable:</span>
+              <span>₹{balance}</span>
+            </div>
+            
+            {hasAdvance && (
+              <>
+                <div className="summary-row">
+                  <span>Advance Paid:</span>
+                  <span>₹{advancePaid}</span>
+                </div>
+                <div className="summary-row summary-total">
+                  <span>Balance:</span>
+                  <span>₹{balance}</span>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    )}
+
+    {/* Customer Information Card */}
+    <div className="card">
+      {editingOrderId && (
+        <div className="editing-notice">
+          ✏️ You are editing an existing order. Changes will overwrite the previous version.
         </div>
       )}
-
-      <div className="card">
-        {editingOrderId && (
-          <div style={{ padding: '10px', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', borderRadius: '5px', marginBottom: '15px' }}>
-            ✏️ You are editing an existing order. Changes will overwrite the previous version.
-          </div>
-        )}
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h2>Customer Information</h2>
-          <div style={{ 
-            padding: '8px 12px', 
-            backgroundColor: '#e3f2fd', 
-            borderRadius: '20px', 
-            fontSize: '0.9rem',
-            color: '#1976d2',
-            fontWeight: 'bold'
-          }}>
-            📍 {currentUser.branch} ({branches[currentUser.branch] || 'XX'})
-          </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <h2>Customer Information</h2>
+        <div className="branch-badge">
+          📍 {currentUser.branch} ({branches[currentUser.branch] || 'XX'})
         </div>
-        
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
-          <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+        <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
+      </div>
+      
+      <div className="form-grid">
+        <div className="form-group">
+          <label>Name<span className="required">*</span></label>
+          <input 
+            name="name" 
+            value={customer.name} 
+            onChange={handleCustomerChange} 
+            className={validationErrors.name ? 'error-field' : ''}
+            placeholder="Enter full name"
+          />
+          {validationErrors.name && <div className="error-message">{validationErrors.name}</div>}
         </div>
-        
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Name<span className="required">*</span></label>
-            <input 
-              name="name" 
-              value={customer.name} 
-              onChange={handleCustomerChange} 
-              className={validationErrors.name ? 'error-field' : ''}
-              placeholder="Enter full name"
-            />
-            {validationErrors.name && <div className="error-message">{validationErrors.name}</div>}
-          </div>
           <div className="form-group">
             <label>Phone<span className="required">*</span></label>
             <input 
@@ -1993,12 +1795,12 @@ useEffect(() => {
               <div style={{ flex: 1 }}>₹{item.amount || 0}</div>
               
               <button 
-                onClick={() => removeItem(box.id, item.id)} 
-                className="remove-btn"
-                aria-label="Remove item"
-                disabled={box.items.length <= 1}
-                style={{ opacity: box.items.length <= 1 ? 0.5 : 1 }}
-              >❌</button>
+  onClick={() => removeItem(box.id, item.id)} 
+  className="remove-btn"
+  disabled={box.items.length <= 1}
+>
+  ❌
+</button>
             </div>
           ))}
           
