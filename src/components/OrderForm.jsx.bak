@@ -1226,74 +1226,115 @@ useEffect(() => {
     };
   }, [hasFormData]);
 
-  // Auto-save functionality - REPLACE THE EXISTING AUTO-SAVE useEffect WITH THIS
+  // IMPROVED AUTO-SAVE WITH DRAFT MANAGEMENT - Replace the entire auto-save useEffect
 useEffect(() => {
   let isMounted = true;
+  let autoSaveTimer;
   
-  const autoSaveInterval = 30000;
-  const interval = setInterval(async () => {
-    if (
-      isMounted &&
+  const performAutoSave = async () => {
+    if (!isMounted) return;
+    
+    // Enhanced conditions for auto-save
+    const shouldAutoSave = (
       customer.name?.trim() && 
       customer.phone?.trim() && 
       orderInfo.orderPrefix && 
       orderInfo.orderNumber &&
-      !editingOrderId
-    ) {
-      try {
-        const autoSaveData = {
-          customerName: customer.name,
-          phone: customer.phone,
-          address: customer.address,
-          email: customer.email,
-          pincode: customer.pincode,
-          city: customer.city,
-          state: customer.state,
-          ...orderInfo,
-          orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-          branch: currentUser.role === 'admin' && selectedBranch 
-            ? selectedBranch 
-            : currentUser.branch,
-          branchCode: currentUser.role === 'admin' && selectedBranch
-            ? branches[selectedBranch] 
-            : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]),
-          createdBy: currentUser.displayName || currentUser.username || 'Unknown',
-          boxes: boxes.map(calculateTotals),
-          notes,
-          extraDiscount: {
-            value: extraDiscount.value || 0,
-            type: extraDiscount.type || 'value'
-          },
-          advancePaid: advancePaid || 0,
-          totalBoxCount: calculateTotalBoxCount(),
-          grandTotal: calculateGrandTotal(),
-          balance: calculateGrandTotal() - (advancePaid || 0),
-          status: 'auto-saved'
-        };
-        
-        try {
-          const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
-          if (!isUnique) return;
-
-          await saveOrder(autoSaveData);
-          
-          if (isMounted) {
-            setLastSavedTime(new Date().toLocaleTimeString());
-          }
-        } catch (error) {
-          console.log('Auto-save failed:', error);
-        }
-      } catch (error) {
-        console.log('Auto-save error:', error);
-      }
+      !editingOrderId && // Don't auto-save when editing existing orders
+      boxes.some(box => box.items.some(item => item.name && item.name !== '')) && // At least one item
+      calculateGrandTotal() > 0 && // Total > 0
+      currentUser.branch !== 'Loading...' && // User data loaded
+      !isCheckingOrderNumber // Don't auto-save while checking order number
+    );
+    
+    if (!shouldAutoSave) {
+      console.log('🚫 Auto-save skipped - conditions not met');
+      return;
     }
-  }, autoSaveInterval);
+    
+    try {
+      const draftOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
+      
+      // Check if a draft already exists for this order number
+      const checkResponse = await apiCall(`/orders/check-draft?orderNumber=${encodeURIComponent(draftOrderNumber)}`);
+      
+      let existingDraftId = null;
+      if (checkResponse.ok) {
+        const checkData = await checkResponse.json();
+        existingDraftId = checkData.draftId;
+      }
+      
+      const autoSaveData = {
+        customerName: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        email: customer.email,
+        pincode: customer.pincode,
+        city: customer.city,
+        state: customer.state,
+        ...orderInfo,
+        orderNumber: draftOrderNumber,
+        branch: currentUser.role === 'admin' && selectedBranch 
+          ? selectedBranch 
+          : currentUser.branch,
+        branchCode: (() => {
+          const actualBranchCode = currentUser.role === 'admin' && selectedBranch
+            ? branches[selectedBranch] 
+            : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]);
+          return actualBranchCode === 'HO' ? 'BD' : actualBranchCode;
+        })(),
+        createdBy: currentUser.displayName || currentUser.username || 'Unknown',
+        boxes: boxes.map(calculateTotals),
+        notes,
+        extraDiscount: {
+          value: extraDiscount.value || 0,
+          type: extraDiscount.type || 'value'
+        },
+        advancePaid: advancePaid || 0,
+        totalBoxCount: calculateTotalBoxCount(),
+        grandTotal: calculateGrandTotal(),
+        balance: calculateGrandTotal() - (advancePaid || 0),
+        status: 'auto-saved',
+        isDraft: true // Mark as draft
+      };
+      
+      if (existingDraftId) {
+        // Update existing draft
+        autoSaveData._id = existingDraftId;
+        await saveOrder(autoSaveData, existingDraftId);
+        console.log('💾 Auto-save: Updated existing draft', existingDraftId);
+      } else {
+        // Create new draft only if order number is truly unique
+        const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
+        if (isUnique) {
+          await saveOrder(autoSaveData);
+          console.log('💾 Auto-save: Created new draft');
+        } else {
+          console.log('🚫 Auto-save skipped: Order number already exists');
+        }
+      }
+      
+      if (isMounted) {
+        setLastSavedTime(new Date().toLocaleTimeString());
+      }
+    } catch (error) {
+      console.log('❌ Auto-save failed:', error);
+      // Don't show error messages for auto-save failures
+    }
+  };
+  
+  // Set up auto-save timer (every 60 seconds)
+  if (isMounted) {
+    autoSaveTimer = setInterval(performAutoSave, 60000);
+  }
   
   return () => {
     isMounted = false;
-    clearInterval(interval);
+    if (autoSaveTimer) {
+      clearInterval(autoSaveTimer);
+    }
   };
-}, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, branchPrefixes, editingOrderId]);
+}, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, branchPrefixes, editingOrderId, isCheckingOrderNumber]);
 
   // Update document title
   useEffect(() => {
