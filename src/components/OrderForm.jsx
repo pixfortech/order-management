@@ -13,21 +13,38 @@ const getAuthToken = () => localStorage.getItem('authToken');
 
 // Replace the existing apiCall function in OrderForm.jsx with this:
 const apiCall = async (endpoint, options = {}) => {
-  // Use the same API URL logic as orderApi.js
+  // Enhanced API URL logic with debugging
   const getApiUrl = () => {
-    if (process.env.REACT_APP_API_URL) {
-      return process.env.REACT_APP_API_URL;
+    const envUrl = process.env.REACT_APP_API_URL;
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    
+    console.log('🌐 API URL Debug:', {
+      envUrl,
+      hostname,
+      isLocalhost,
+      nodeEnv: process.env.NODE_ENV
+    });
+    
+    if (envUrl) {
+      console.log('✅ Using environment API URL:', envUrl);
+      return envUrl;
     }
     
-    if (window.location.hostname === 'localhost') {
+    if (isLocalhost) {
+      console.log('🏠 Using localhost API URL');
       return 'http://localhost:5000';
     }
     
-    return 'https://order-management-fbre.onrender.com'; // Your actual backend URL
+    const cloudUrl = 'https://order-management-fbre.onrender.com';
+    console.log('☁️ Using cloud API URL:', cloudUrl);
+    return cloudUrl;
   };
   
   const baseUrl = `${getApiUrl()}/api`;
   const url = `${baseUrl}${endpoint}`;
+  
+  console.log('📡 Making API call to:', url);
   
   const defaultOptions = {
     headers: {
@@ -38,6 +55,9 @@ const apiCall = async (endpoint, options = {}) => {
   const token = getAuthToken();
   if (token) {
     defaultOptions.headers['Authorization'] = `Bearer ${token}`;
+    console.log('🔑 Including auth token');
+  } else {
+    console.log('⚠️ No auth token found');
   }
   
   const finalOptions = {
@@ -49,7 +69,31 @@ const apiCall = async (endpoint, options = {}) => {
     },
   };
   
-  return await fetch(url, finalOptions);
+  console.log('📤 Request options:', finalOptions);
+  
+  try {
+    const response = await fetch(url, finalOptions);
+    console.log('📥 Response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        url,
+        errorText
+      });
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('❌ Network Error:', {
+      message: error.message,
+      url,
+      error
+    });
+    throw error;
+  }
 };
 
 const user = {
@@ -269,7 +313,7 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
 const generateUniqueOrderNumber = async () => {
   if (editingOrderId) return;
 
-  // ✅ FIXED: Simplified branch selection - always use currentUser.branch for staff
+  // ✅ FIXED: Handle HO branch specially - use BD prefix for orders
   let activeBranch;
   let branchCode;
   
@@ -277,16 +321,27 @@ const generateUniqueOrderNumber = async () => {
     // Admin has selected a specific branch
     activeBranch = selectedBranch;
     branchCode = branches[selectedBranch];
+    
+    // Special handling: if selected branch is HO, use BD for order prefix
+    if (branchCode === 'HO') {
+      branchCode = 'BD';
+    }
   } else {
     // Use current user's branch (works for both admin and staff)
     activeBranch = currentUser.branch;
     branchCode = branches[currentUser.branch];
+    
+    // Special handling: if user's branch is HO, use BD for order prefix
+    if (branchCode === 'HO') {
+      branchCode = 'BD';
+    }
   }
   
   console.log('🔢 Generating order number:', {
     userRole: currentUser.role,
     activeBranch,
-    branchCode,
+    originalBranchCode: branches[activeBranch],
+    finalBranchCode: branchCode,
     availableBranches: Object.keys(branches)
   });
     
@@ -294,7 +349,7 @@ const generateUniqueOrderNumber = async () => {
     console.log('❌ Cannot generate order number - invalid branch info');
     setOrderInfo(prev => ({ 
       ...prev, 
-      orderPrefix: 'XX-GEN', 
+      orderPrefix: 'BD-GEN', 
       orderNumber: '001' 
     }));
     return;
@@ -502,7 +557,7 @@ const handleOrderChange = (e) => {
       return;
     }
     
-    // ✅ FIXED: Simplified branch logic
+    // ✅ FIXED: Handle HO branch specially - use BD prefix for orders
     let activeBranch;
     let branchCode;
     
@@ -514,13 +569,19 @@ const handleOrderChange = (e) => {
       branchCode = branches[currentUser.branch];
     }
     
+    // Special handling: if branch is HO, use BD for order prefix
+    if (branchCode === 'HO') {
+      branchCode = 'BD';
+    }
+    
     console.log('🎉 Occasion changed:', {
       newOccasion: value,
       activeBranch,
-      branchCode
+      originalBranchCode: branches[activeBranch],
+      finalBranchCode: branchCode
     });
       
-    const finalBranchCode = branchCode || 'XX';
+    const finalBranchCode = branchCode || 'BD';
     const occasionPrefix = occasions[value] || value.slice(0, 3).toUpperCase();
     const fullPrefix = `${finalBranchCode}-${occasionPrefix}`;
     
@@ -678,6 +739,7 @@ const handleOrderChange = (e) => {
     const fullOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
 
     // And fix your handleSubmit function's orderData:
+// And fix your handleSubmit function's orderData:
 const orderData = {
   customerName: customer.name,
   phone: customer.phone,
@@ -688,13 +750,17 @@ const orderData = {
   state: customer.state,
   ...orderInfo,
   orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-  // ✅ FIXED: Simplified branch selection
+  // ✅ FIXED: Store actual branch but use appropriate prefix
   branch: currentUser.role === 'admin' && selectedBranch 
     ? selectedBranch 
     : currentUser.branch,
-  branchCode: currentUser.role === 'admin' && selectedBranch
-    ? branches[selectedBranch] 
-    : branches[currentUser.branch],
+  branchCode: (() => {
+    const actualBranchCode = currentUser.role === 'admin' && selectedBranch
+      ? branches[selectedBranch] 
+      : branches[currentUser.branch];
+    // For order storage, use BD if branch is HO
+    return actualBranchCode === 'HO' ? 'BD' : actualBranchCode;
+  })(),
   createdBy: currentUser.displayName || currentUser.username || 'Unknown',
   boxes: boxes.map(calculateTotals),
   notes,
@@ -795,6 +861,8 @@ useEffect(() => {
       const token = localStorage.getItem('authToken');
       
       console.log('🔍 Starting fetchMasterData...');
+      console.log('🌐 Current URL:', window.location.href);
+      console.log('🔑 Auth token exists:', !!token);
       
       if (!token) {
         throw new Error('No authentication token found');
@@ -802,10 +870,19 @@ useEffect(() => {
 
       // ===== FETCH USER PROFILE =====
       console.log('👤 Fetching user profile...');
-      const userResponse = await apiCall('/auth/me');
+      let userResponse;
+      try {
+        userResponse = await apiCall('/auth/me');
+        console.log('👤 User response received:', userResponse.status);
+      } catch (error) {
+        console.error('❌ User fetch network error:', error);
+        throw new Error(`Failed to fetch user data: Network error - ${error.message}`);
+      }
       
       if (!userResponse.ok) {
-        throw new Error(`Failed to fetch user data: ${userResponse.status}`);
+        const errorText = await userResponse.text();
+        console.error('❌ User fetch failed:', errorText);
+        throw new Error(`Failed to fetch user data: ${userResponse.status} - ${errorText}`);
       }
       
       const userDataResponse = await userResponse.json();
@@ -828,10 +905,19 @@ useEffect(() => {
 
       // ===== FETCH BRANCHES =====
       console.log('🏢 Fetching branches...');
-      const branchesResponse = await apiCall('/branches');
+      let branchesResponse;
+      try {
+        branchesResponse = await apiCall('/branches');
+        console.log('🏢 Branches response received:', branchesResponse.status);
+      } catch (error) {
+        console.error('❌ Branches fetch network error:', error);
+        throw new Error(`Failed to fetch branches: Network error - ${error.message}`);
+      }
       
       if (!branchesResponse.ok) {
-        throw new Error(`Failed to fetch branches: ${branchesResponse.status}`);
+        const errorText = await branchesResponse.text();
+        console.error('❌ Branches fetch failed:', errorText);
+        throw new Error(`Failed to fetch branches: ${branchesResponse.status} - ${errorText}`);
       }
       
       const branchesData = await branchesResponse.json();
@@ -1038,7 +1124,17 @@ useEffect(() => {
       
     } catch (error) {
       console.error('❌ Error in fetchMasterData:', error);
-      setMessage(`⚠️ Failed to load system data: ${error.message}`);
+      
+      // Enhanced error message with more details
+      let errorMessage = `⚠️ Failed to load system data: ${error.message}`;
+      
+      if (error.message.includes('Network error')) {
+        errorMessage += '\n\n🌐 This appears to be a network connectivity issue. Please check:\n• Your internet connection\n• If the backend server is running\n• If there are any CORS issues';
+      } else if (error.message.includes('No authentication token')) {
+        errorMessage += '\n\n🔑 Please try logging in again.';
+      }
+      
+      setMessage(errorMessage);
       setIsLoadingData(false);
       
       // Set minimal fallback values to prevent app from breaking
@@ -1209,34 +1305,38 @@ useEffect(() => {
     ) {
       try {
         const autoSaveData = {
-          customerName: customer.name,
-          phone: customer.phone,
-          address: customer.address,
-          email: customer.email,
-          pincode: customer.pincode,
-          city: customer.city,
-          state: customer.state,
-          ...orderInfo,
-          orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
-          branch: currentUser.role === 'admin' && selectedBranch 
-            ? selectedBranch 
-            : currentUser.branch,
-          branchCode: currentUser.role === 'admin' && selectedBranch
-            ? branches[selectedBranch] 
-            : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]),
-          createdBy: currentUser.displayName || currentUser.username || 'Unknown',
-          boxes: boxes.map(calculateTotals),
-          notes,
-          extraDiscount: {
-            value: extraDiscount.value || 0,
-            type: extraDiscount.type || 'value'
-          },
-          advancePaid: advancePaid || 0,
-          totalBoxCount: calculateTotalBoxCount(),
-          grandTotal: calculateGrandTotal(),
-          balance: calculateGrandTotal() - (advancePaid || 0),
-          status: 'auto-saved'
-        };
+  customerName: customer.name,
+  phone: customer.phone,
+  address: customer.address,
+  email: customer.email,
+  pincode: customer.pincode,
+  city: customer.city,
+  state: customer.state,
+  ...orderInfo,
+  orderNumber: `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`,
+  branch: currentUser.role === 'admin' && selectedBranch 
+    ? selectedBranch 
+    : currentUser.branch,
+  branchCode: (() => {
+    const actualBranchCode = currentUser.role === 'admin' && selectedBranch
+      ? branches[selectedBranch] 
+      : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]);
+    // For order storage, use BD if branch is HO
+    return actualBranchCode === 'HO' ? 'BD' : actualBranchCode;
+  })(),
+  createdBy: currentUser.displayName || currentUser.username || 'Unknown',
+  boxes: boxes.map(calculateTotals),
+  notes,
+  extraDiscount: {
+    value: extraDiscount.value || 0,
+    type: extraDiscount.type || 'value'
+  },
+  advancePaid: advancePaid || 0,
+  totalBoxCount: calculateTotalBoxCount(),
+  grandTotal: calculateGrandTotal(),
+  balance: calculateGrandTotal() - (advancePaid || 0),
+  status: 'auto-saved'
+};
         
         try {
           const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
@@ -1509,22 +1609,32 @@ useEffect(() => {
   {/* Three separate fields for order number */}
   <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
     {/* Prefix Field - Dropdown for admin, disabled input for staff */}
-    {currentUser.role === 'admin' ? (
+{currentUser.role === 'admin' ? (
   <select
-    value={orderInfo.orderPrefix.split('-')[0] || 'XX'}
+    value={(() => {
+      const prefix = orderInfo.orderPrefix.split('-')[0] || 'BD';
+      // If the current prefix is BD but user selected HO, show HO in dropdown
+      if (prefix === 'BD' && selectedBranch === 'Head Office') {
+        return 'HO';
+      }
+      return prefix;
+    })()}
     onChange={(e) => {
-      const newPrefix = e.target.value;
+      const selectedCode = e.target.value;
       const occasionCode = orderInfo.orderPrefix.split('-')[1] || 'GEN';
-      const fullPrefix = `${newPrefix}-${occasionCode}`;
       
       // Find the branch name for this code
       const selectedBranchName = Object.keys(branches).find(
-        name => branches[name] === newPrefix
+        name => branches[name] === selectedCode
       );
       
-      console.log('🏢 Admin selected branch:', selectedBranchName, 'Code:', newPrefix);
+      // For order prefix, use BD if HO is selected
+      const orderPrefixCode = selectedCode === 'HO' ? 'BD' : selectedCode;
+      const fullPrefix = `${orderPrefixCode}-${occasionCode}`;
       
-      setSelectedBranch(selectedBranchName); // ADD THIS LINE
+      console.log('🏢 Admin selected branch:', selectedBranchName, 'Display Code:', selectedCode, 'Order Prefix Code:', orderPrefixCode);
+      
+      setSelectedBranch(selectedBranchName);
       
       setOrderInfo(prev => ({
         ...prev,
@@ -1536,23 +1646,30 @@ useEffect(() => {
     className={orderNumberError ? 'error-field' : ''}
     title="Branch Code"
   >
-        {Object.entries(branches)
-          .sort(([,a], [,b]) => a.localeCompare(b)) // Sort by branch code alphabetically
-          .map(([branchName, branchCode]) => (
-            <option key={branchCode} value={branchCode}>
-              {branchCode}
-            </option>
-          ))}
-      </select>
-    ) : (
-      <input
-        value={orderInfo.orderPrefix.split('-')[0] || 'XX'}
-        disabled={true}
-        style={{ width: '80px', backgroundColor: '#f0f0f0' }}
-        className={orderNumberError ? 'error-field' : ''}
-        title="Branch Code (Auto-set based on your branch)"
-      />
-    )}
+    {Object.entries(branches)
+      .sort(([,a], [,b]) => a.localeCompare(b)) // Sort by branch code alphabetically
+      .map(([branchName, branchCode]) => (
+        <option key={branchCode} value={branchCode}>
+          {branchCode}
+        </option>
+      ))}
+  </select>
+) : (
+  <input
+    value={(() => {
+      const prefix = orderInfo.orderPrefix.split('-')[0] || 'BD';
+      // For staff, if their branch is HO, show BD in the prefix
+      if (currentUser.branch === 'Head Office') {
+        return 'BD';
+      }
+      return prefix;
+    })()}
+    disabled={true}
+    style={{ width: '80px', backgroundColor: '#f0f0f0' }}
+    className={orderNumberError ? 'error-field' : ''}
+    title="Branch Code (Auto-set based on your branch)"
+  />
+)}
     
     <span>-</span>
     
