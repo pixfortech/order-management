@@ -1,24 +1,26 @@
 // src/api/orderApi.js
-// Better API URL handling for different environments
 const getApiUrl = () => {
-  // Check if we have an environment variable
+  // Check environment variable first
   if (process.env.REACT_APP_API_URL) {
+    console.log('🌐 Using environment API URL:', process.env.REACT_APP_API_URL);
     return process.env.REACT_APP_API_URL;
   }
   
-  // Fallback based on current environment
+  // Fallback based on hostname
   if (window.location.hostname === 'localhost') {
+    console.log('🏠 Using localhost API URL');
     return 'http://localhost:5000';
   }
   
-  // For production, use your actual backend URL
-  return 'https://order-management-fbre.onrender.com'; // Your actual Render backend URL
+  // Use your actual Render deployment URL
+  const renderUrl = 'https://order-management-fbre.onrender.com';
+  console.log('☁️ Using Render URL:', renderUrl);
+  return renderUrl;
 };
 
 const API_BASE = `${getApiUrl()}/api`;
 
 const getAuthToken = () => {
-  // For cloud deployment, still use localStorage but with fallback
   try {
     return localStorage.getItem('authToken');
   } catch (error) {
@@ -50,21 +52,32 @@ const apiCall = async (endpoint, options = {}) => {
     },
   };
   
-  console.log('🔗 API Call to:', url); // Debug log
+  console.log('🔗 API Call to:', url);
   
-  return await fetch(url, finalOptions);
+  try {
+    const response = await fetch(url, finalOptions);
+    console.log('📥 Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error Response:', errorText);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('❌ Network error:', error);
+    throw error;
+  }
 };
 
 export const saveOrder = async (orderData, editingOrderId = null) => {
   try {
-    // ✅ DEBUG: Log the branch code being used
     console.log('🔍 === FRONTEND API DEBUG ===');
     console.log('📊 Order data branchCode:', orderData.branchCode);
-    console.log('📊 Order data branchCode type:', typeof orderData.branchCode);
     console.log('📊 Order data branch:', orderData.branch);
+    console.log('📊 Is draft:', orderData.isDraft);
     console.log('🔍 === END FRONTEND DEBUG ===');
     
-    // Use the branchCode from orderData to determine which collection to save to
     const branchCode = orderData.branchCode ? orderData.branchCode.toLowerCase() : '';
     
     if (!branchCode) {
@@ -72,33 +85,29 @@ export const saveOrder = async (orderData, editingOrderId = null) => {
     }
     
     console.log('💾 Saving order to branch collection:', `orders_${branchCode}`);
-    console.log('📊 Order data branch:', orderData.branch);
-    console.log('🏷️ Order data branchCode:', orderData.branchCode);
     console.log('🔗 API endpoint will be:', `/orders/${branchCode}`);
     
     if (editingOrderId) {
-      // Update existing order
       const response = await apiCall(`/orders/${branchCode}/${editingOrderId}`, {
         method: 'PUT',
         body: JSON.stringify(orderData),
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
         console.error('❌ Update order error response:', errorData);
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
       
       return await response.json();
     } else {
-      // Create new order
       const response = await apiCall(`/orders/${branchCode}`, {
         method: 'POST',
         body: JSON.stringify(orderData),
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
         console.error('❌ Save order error response:', errorData);
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }

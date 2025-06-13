@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { saveOrder } from '../api/orderApi';
 import { v4 as uuidv4 } from 'uuid';
 import { FaEdit } from 'react-icons/fa';
 import './OrderForm.css';
@@ -51,6 +50,11 @@ const apiCall = async (endpoint, options = {}) => {
   
   const baseUrl = `${getApiUrl()}/api`;
   const url = `${baseUrl}${endpoint}`;
+  
+  // ADD THIS DEBUG LOG:
+  console.log('🔗 Final API URL:', url);
+  console.log('🔗 Endpoint:', endpoint);
+  console.log('🔗 Base URL:', baseUrl);
   
   const defaultOptions = {
     headers: {
@@ -262,6 +266,218 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
     
     return hasCustomerData || hasItemData || hasSpecialSettings;
   }, [customer, boxes, extraDiscount, advancePaid, notes, orderInfo.occasion]);
+  
+// Enhanced email service function with PDF attachment
+// Replace your sendOrderEmail function with this version that has better error handling:
+// Replace your sendOrderEmail function with this debug version:
+const sendOrderEmail = async (orderData, isModification = false, changes = null) => {
+  // Check if email is provided and valid
+  if (!orderData.email || !orderData.email.trim()) {
+    console.log('📧 No email provided, skipping email send');
+    return;
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(orderData.email.trim())) {
+    console.log('📧 Invalid email format, skipping email send');
+    return;
+  }
+
+  try {
+    console.log('📧 Starting email sending process...');
+    
+    // Step 1: Test if email service is accessible
+    console.log('🔍 Step 1: Testing email service accessibility...');
+    const debugResponse = await apiCall('/emails/debug');
+    
+    if (!debugResponse.ok) {
+      throw new Error(`Email service not accessible: ${debugResponse.status}`);
+    }
+    
+    const debugData = await debugResponse.json();
+    console.log('✅ Email service accessible:', debugData);
+    
+    // Step 2: Test email authentication
+    console.log('🔍 Step 2: Testing email authentication...');
+    const authResponse = await apiCall('/emails/test-auth', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    
+    if (!authResponse.ok) {
+      const authError = await authResponse.json().catch(() => ({ error: 'Unknown auth error' }));
+      console.error('❌ Email authentication failed:', authError);
+      throw new Error(`Email authentication failed: ${authError.message || authError.error}`);
+    }
+    
+    const authData = await authResponse.json();
+    console.log('✅ Email authentication successful:', authData);
+    
+    // Step 3: Prepare email data
+    console.log('🔍 Step 3: Preparing email data...');
+    
+    // Calculate totals for email
+    const calculateBoxTotal = (box) => {
+      const itemsSubtotal = box.items.reduce((sum, item) => sum + item.qty * item.price, 0);
+      const boxSubtotal = itemsSubtotal * box.boxCount;
+      const boxDiscount = box.discount > 0 ? box.discount * box.boxCount : 0;
+      return boxSubtotal - boxDiscount;
+    };
+
+    const subtotal = orderData.boxes.reduce((sum, box) => sum + calculateBoxTotal(box), 0);
+    const extraDiscountAmount = orderData.extraDiscount?.value > 0
+      ? (orderData.extraDiscount.type === 'percentage'
+        ? (orderData.extraDiscount.value / 100) * subtotal
+        : orderData.extraDiscount.value)
+      : 0;
+    const finalTotal = subtotal - extraDiscountAmount;
+    const balance = finalTotal - (orderData.advancePaid || 0);
+
+    const emailPayload = {
+      to: orderData.email.trim(),
+      customerName: orderData.customerName,
+      orderNumber: orderData.orderNumber,
+      orderData: {
+        ...orderData,
+        calculatedTotals: {
+          subtotal,
+          extraDiscountAmount,
+          finalTotal,
+          balance
+        }
+      },
+      isModification,
+      changes: changes || [],
+      brandDetails: brandDetails,
+      fromEmail: 'ganguramonline@gmail.com'
+    };
+    
+    console.log('✅ Email data prepared for:', orderData.email);
+
+    // Step 4: Send the actual email
+    console.log('🔍 Step 4: Sending actual email...');
+    const response = await apiCall('/emails/send-order-email', {
+      method: 'POST',
+      body: JSON.stringify(emailPayload)
+    });
+
+    console.log('📥 Email response status:', response.status);
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('✅ Email sent successfully:', result);
+      
+      // Update the message to show email was sent
+      setMessage(prev => {
+        const baseMessage = prev || '';
+        const emailSuffix = isModification 
+          ? ' 📧 Order update email sent to customer.'
+          : ' 📧 Order confirmation email sent to customer.';
+        
+        return baseMessage.includes('📧') ? baseMessage : baseMessage + emailSuffix;
+      });
+    } else {
+      const errorResult = await response.json().catch(() => ({ error: 'Unknown error' }));
+      console.warn('⚠️ Email sending failed:', {
+        status: response.status,
+        error: errorResult
+      });
+      
+      // Show detailed error for debugging
+      console.error('📧 Email Error Details:', errorResult);
+    }
+  } catch (error) {
+    console.error('❌ Email service error:', error);
+    console.log('📧 Order saved successfully, email notification failed');
+    
+    // Log the full error for debugging
+    console.error('📧 Full Email Error:', {
+      message: error.message,
+      stack: error.stack
+    });
+  }
+};
+
+// Enhanced function to detect changes between original and new order
+const detectOrderChanges = (original, current) => {
+  const changes = [];
+  
+  // Customer information changes
+  if (original.customerName !== current.customerName) {
+    changes.push(`Customer name: "${original.customerName}" → "${current.customerName}"`);
+  }
+  
+  if (original.phone !== current.phone) {
+    changes.push(`Phone number: ${original.phone} → ${current.phone}`);
+  }
+  
+  if (original.email !== current.email) {
+    changes.push(`Email: ${original.email || 'None'} → ${current.email || 'None'}`);
+  }
+  
+  if (original.address !== current.address) {
+    changes.push(`Address: "${original.address || 'None'}" → "${current.address || 'None'}"`);
+  }
+  
+  // Order information changes
+  if (original.occasion !== current.occasion) {
+    changes.push(`Occasion: ${original.occasion} → ${current.occasion}`);
+  }
+  
+  if (original.orderDate !== current.orderDate) {
+    changes.push(`Order date: ${new Date(original.orderDate).toLocaleDateString()} → ${new Date(current.orderDate).toLocaleDateString()}`);
+  }
+  
+  if (original.deliveryDate !== current.deliveryDate) {
+    changes.push(`Delivery date: ${new Date(original.deliveryDate).toLocaleDateString()} → ${new Date(current.deliveryDate).toLocaleDateString()}`);
+  }
+  
+  if (original.deliveryTime !== current.deliveryTime) {
+    changes.push(`Delivery time: ${original.deliveryTime} → ${current.deliveryTime}`);
+  }
+  
+  // Financial changes
+  if (Math.abs(original.grandTotal - current.grandTotal) > 0.01) {
+    changes.push(`Total amount: ₹${original.grandTotal.toFixed(2)} → ₹${current.grandTotal.toFixed(2)}`);
+  }
+  
+  if (Math.abs((original.advancePaid || 0) - (current.advancePaid || 0)) > 0.01) {
+    changes.push(`Advance paid: ₹${(original.advancePaid || 0).toFixed(2)} → ₹${(current.advancePaid || 0).toFixed(2)}`);
+  }
+  
+  // Extra discount changes
+  const origDiscount = original.extraDiscount?.value || 0;
+  const currDiscount = current.extraDiscount?.value || 0;
+  if (Math.abs(origDiscount - currDiscount) > 0.01) {
+    changes.push(`Extra discount: ₹${origDiscount.toFixed(2)} → ₹${currDiscount.toFixed(2)}`);
+  }
+  
+  // Items changes - more detailed comparison
+  const originalItems = original.boxes.flatMap((box, boxIndex) => 
+    box.items.map(item => `Box ${boxIndex + 1}: ${item.name} x${item.qty} @ ₹${item.price}`)
+  ).sort();
+  
+  const currentItems = current.boxes.flatMap((box, boxIndex) => 
+    box.items.map(item => `Box ${boxIndex + 1}: ${item.name} x${item.qty} @ ₹${item.price}`)
+  ).sort();
+  
+  if (JSON.stringify(originalItems) !== JSON.stringify(currentItems)) {
+    changes.push('Order items, quantities, or prices have been modified');
+  }
+  
+  // Box count changes
+  if (original.boxes.length !== current.boxes.length) {
+    changes.push(`Number of boxes: ${original.boxes.length} → ${current.boxes.length}`);
+  }
+  
+  // Notes changes
+  if ((original.notes || '') !== (current.notes || '')) {
+    changes.push(`Notes: "${original.notes || 'None'}" → "${current.notes || 'None'}"`);
+  }
+  
+  return changes;
+};
 
   // Function to check if order number exists before submitting
   const checkOrderNumberUnique = async (orderPrefix, orderNumber) => {
@@ -286,16 +502,20 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
 const generateUniqueOrderNumber = async () => {
   if (editingOrderId) return;
 
-  // ✅ FIXED: Simplified branch selection - always use currentUser.branch for staff
   let activeBranch;
   let branchCode;
   
-  if (currentUser.role === 'admin' && selectedBranch) {
-    // Admin has selected a specific branch
-    activeBranch = selectedBranch;
-    branchCode = branches[selectedBranch];
+  if (currentUser.role === 'admin') {
+    if (selectedBranch) {
+      activeBranch = selectedBranch;
+      branchCode = branches[selectedBranch];
+    } else {
+      // ✅ FIXED: Default to BD (Beadon Street) for admin
+      activeBranch = 'Beadon Street';
+      branchCode = 'BD';
+      setSelectedBranch('Beadon Street');
+    }
   } else {
-    // Use current user's branch (works for both admin and staff)
     activeBranch = currentUser.branch;
     branchCode = branches[currentUser.branch];
   }
@@ -304,14 +524,14 @@ const generateUniqueOrderNumber = async () => {
     userRole: currentUser.role,
     activeBranch,
     branchCode,
-    availableBranches: Object.keys(branches)
+    selectedBranch
   });
     
   if (!activeBranch || activeBranch === 'Loading...' || !branchCode) {
     console.log('❌ Cannot generate order number - invalid branch info');
     setOrderInfo(prev => ({ 
       ...prev, 
-      orderPrefix: 'XX-GEN', 
+      orderPrefix: 'BD-GEN', // Default to BD-GEN for admin
       orderNumber: '001' 
     }));
     return;
@@ -712,6 +932,8 @@ const handleOrderChange = (e) => {
 
   // ===== DRAFT HANDLING LOGIC =====
   let existingDraftId = null;
+  
+  // ✅ FIXED: Only check for drafts if we're NOT editing an existing order
   if (!editingOrderId && status === 'saved') {
     try {
       console.log('🔍 Checking for existing draft:', fullOrderNumber);
@@ -739,16 +961,22 @@ const handleOrderChange = (e) => {
     state: customer.state,
     ...orderInfo,
     orderNumber: fullOrderNumber,
-    // ✅ FIXED: Handle HO branch -> BD prefix conversion
-    branch: currentUser.role === 'admin' && selectedBranch 
-      ? selectedBranch 
-      : currentUser.branch,
+    branch: (() => {
+      if (currentUser.role === 'admin') {
+        // For admin, use the branch from the order prefix
+        const prefixBranch = orderInfo.orderPrefix.split('-')[0];
+        const branchName = Object.keys(branches).find(name => branches[name] === prefixBranch);
+        return branchName || 'Beadon Street'; // Default to BD for admin
+      } else {
+        return currentUser.branch;
+      }
+    })(),
     branchCode: (() => {
-      const actualBranchCode = currentUser.role === 'admin' && selectedBranch
-        ? branches[selectedBranch] 
-        : branches[currentUser.branch];
-      // Convert HO to BD for order storage
-      return actualBranchCode === 'HO' ? 'BD' : actualBranchCode;
+      if (currentUser.role === 'admin') {
+        return orderInfo.orderPrefix.split('-')[0];
+      } else {
+        return branches[currentUser.branch];
+      }
     })(),
     createdBy: currentUser.displayName || currentUser.username || 'Unknown',
     boxes: boxes.map(calculateTotals),
@@ -762,7 +990,7 @@ const handleOrderChange = (e) => {
     grandTotal: calculateGrandTotal(),
     balance: calculateGrandTotal() - (advancePaid || 0),
     status: status,
-    isDraft: false // Always false for manual saves
+    isDraft: false
   };
 
   // ===== SET ORDER ID FOR UPDATE =====
@@ -777,23 +1005,19 @@ const handleOrderChange = (e) => {
   try {
     // ===== CHECK FOR CHANGES (EDIT MODE) =====
     if (editingOrderId) {
-      const original = JSON.stringify(selectedOrder);
-      const current = JSON.stringify(orderData);
-      if (original === current) {
-        setMessage("⚠️ No changes detected. Nothing saved.");
-        return;
-      }
-    }
-
-    // ===== CHECK ORDER NUMBER UNIQUENESS (NEW ORDERS ONLY) =====
-    if (!editingOrderId && !existingDraftId) {
-      console.log('🔍 Checking order number uniqueness for new order...');
-      const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
-      if (!isUnique) {
-        setOrderNumberError(true);
-        setMessage('❌ This order number already exists. Please choose a different one.');
-        setEditOrderNumber(true);
-        return;
+      console.log('📝 Edit mode detected - skipping duplicate check');
+      // In edit mode, we don't need to check for duplicates
+    } else {
+      // ===== CHECK ORDER NUMBER UNIQUENESS (NEW ORDERS ONLY) =====
+      if (!existingDraftId) {
+        console.log('🔍 Checking order number uniqueness for new order...');
+        const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
+        if (!isUnique) {
+          setOrderNumberError(true);
+          setMessage('❌ This order number already exists. Please choose a different one.');
+          setEditOrderNumber(true);
+          return;
+        }
       }
     }
 
@@ -802,14 +1026,54 @@ const handleOrderChange = (e) => {
       isEdit: !!editingOrderId,
       isDraftConversion: !!existingDraftId,
       orderNumber: fullOrderNumber,
-      status: status
+      status: status,
+      branchCode: orderData.branchCode,
+      orderId: orderData._id
     });
 
-    await saveOrder(orderData, editingOrderId || existingDraftId);
+    const branchCodeForAPI = orderData.branchCode.toLowerCase();
     
+    // ✅ FIXED: Use PUT for existing orders, POST for new orders
+    let saveResponse;
+    if (editingOrderId) {
+      // Use PUT for updating existing orders
+      saveResponse = await apiCall(`/orders/${branchCodeForAPI}/${editingOrderId}`, {
+        method: 'PUT',
+        body: JSON.stringify(orderData)
+      });
+    } else {
+      // Use POST for new orders (including draft conversions)
+      saveResponse = await apiCall(`/orders/${branchCodeForAPI}`, {
+        method: 'POST',
+        body: JSON.stringify(orderData)
+      });
+    }
+
+    if (!saveResponse.ok) {
+      const errorData = await saveResponse.json().catch(() => ({}));
+      throw new Error(errorData.message || `Server responded with ${saveResponse.status}`);
+    }
+
+    const savedOrderResult = await saveResponse.json();
+    console.log('✅ Order saved successfully:', savedOrderResult);
+
     // ===== SUCCESS HANDLING =====
     setMessage(`✅ Order ${status === 'held' ? 'held' : 'saved'} successfully!`);
     setLastSavedTime(new Date().toLocaleTimeString());
+
+    // ===== EMAIL HANDLING =====
+    try {
+      if (editingOrderId && selectedOrder) {
+        const changes = detectOrderChanges(selectedOrder, orderData);
+        if (changes.length > 0) {
+          await sendOrderEmail(orderData, true, changes);
+        }
+      } else {
+        await sendOrderEmail(orderData, false);
+      }
+    } catch (emailError) {
+      console.warn('Email sending failed but order was saved:', emailError);
+    }
 
     // ===== AUTO-INCREMENT ORDER NUMBER (NEW SAVES ONLY) =====
     if (status === 'saved' && !editingOrderId) {
@@ -822,7 +1086,6 @@ const handleOrderChange = (e) => {
 
     // ===== CLEAR EDITING STATE =====
     if (editingOrderId || existingDraftId) {
-      // Don't auto-increment when editing or converting drafts
       setEditOrderNumber(false);
     }
 
@@ -831,7 +1094,6 @@ const handleOrderChange = (e) => {
     
     const errorMessage = err.message || '';
     
-    // ===== ERROR HANDLING =====
     if (errorMessage.includes('unique') || errorMessage.includes('duplicate') || err.status === 409) {
       setOrderNumberError(true);
       setMessage('❌ This order number already exists. Please use a different number.');
@@ -1014,6 +1276,25 @@ useEffect(() => {
       // Set branches state
       setBranches(branchesObj);
       branchPrefixes = branchesObj;
+	  
+	  // ADD THIS CODE HERE:
+// Replace the admin default branch section in fetchMasterData with this:
+if (finalUserData.role === 'admin' && !selectedBranch) {
+  // ✅ FIXED: Set default branch for admin users to BD (Beadon Street)
+  const defaultBranchName = Object.keys(branchesObj).find(name => branchesObj[name] === 'BD');
+  if (defaultBranchName) {
+    setSelectedBranch(defaultBranchName);
+    console.log('🏢 Admin default branch set to:', defaultBranchName);
+  } else {
+    // Fallback to first available branch if BD not found
+    const firstBranch = Object.keys(branchesObj)[0];
+    if (firstBranch) {
+      setSelectedBranch(firstBranch);
+      console.log('🏢 Admin fallback branch set to:', firstBranch);
+    }
+  }
+}
+
 
       if (branchMappingUpdated) {
         setMessage(`ℹ️ Your branch "${finalBranchName}" was added to the system mapping.`);
@@ -1082,32 +1363,40 @@ useEffect(() => {
       }
 
       // ===== FETCH ITEMS =====
-      try {
-        console.log('📦 Fetching items...');
-        const itemsResponse = await apiCall('/items');
-        
-        if (itemsResponse.ok) {
-          const itemsData = await itemsResponse.json();
-          console.log('📦 Items data received, count:', Array.isArray(itemsData) ? itemsData.length : 'invalid format');
-          
-          if (Array.isArray(itemsData)) {
-            setItems(itemsData);
-            itemList = itemsData;
-          } else {
-            console.warn('⚠️ Items data is not an array, using empty array');
-            setItems([]);
-            itemList = [];
-          }
-        } else {
-          console.warn('⚠️ Items fetch failed');
-          setItems([]);
-          itemList = [];
-        }
-      } catch (itemsError) {
-        console.warn('⚠️ Items fetch error:', itemsError);
-        setItems([]);
-        itemList = [];
-      }
+try {
+  console.log('📦 Fetching items...');
+  const itemsResponse = await apiCall('/items');
+  
+  if (itemsResponse.ok) {
+    const itemsData = await itemsResponse.json();
+    console.log('📦 Items data received, count:', Array.isArray(itemsData) ? itemsData.length : 'invalid format');
+    
+    if (Array.isArray(itemsData)) {
+      // ✅ FIXED: Sort items alphabetically by name
+      const sortedItems = itemsData.sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      
+      setItems(sortedItems);
+      itemList = sortedItems;
+      console.log('✅ Items sorted alphabetically');
+    } else {
+      console.warn('⚠️ Items data is not an array, using empty array');
+      setItems([]);
+      itemList = [];
+    }
+  } else {
+    console.warn('⚠️ Items fetch failed');
+    setItems([]);
+    itemList = [];
+  }
+} catch (itemsError) {
+  console.warn('⚠️ Items fetch error:', itemsError);
+  setItems([]);
+  itemList = [];
+}
 
       console.log('✅ Master data fetch completed successfully');
       console.log('📊 Final state summary:', {
@@ -1146,39 +1435,61 @@ useEffect(() => {
 }, []);
 
   // Handle selected order changes (populate form when editing)
-  useEffect(() => {
-    if (selectedOrder && selectedOrder._id) {
-      setCustomer({
-        name: selectedOrder.customerName || '',
-        phone: selectedOrder.phone || '',
-        address: selectedOrder.address || '',
-        pincode: selectedOrder.pincode || '',
-        city: selectedOrder.city || '',
-        state: selectedOrder.state || '',
-        email: selectedOrder.email || ''
-      });
+  // Replace your selectedOrder useEffect with this:
+useEffect(() => {
+  if (selectedOrder && selectedOrder._id) {
+    console.log('📝 Loading order for editing:', selectedOrder);
+    
+    setCustomer({
+      name: selectedOrder.customerName || '',
+      phone: selectedOrder.phone || '',
+      address: selectedOrder.address || '',
+      pincode: selectedOrder.pincode || '',
+      city: selectedOrder.city || '',
+      state: selectedOrder.state || '',
+      email: selectedOrder.email || ''
+    });
 
-      setOrderInfo({
-        occasion: selectedOrder.occasion || 'General',
-        orderPrefix: selectedOrder.orderPrefix || `${branchPrefixes[currentUser.branch] || 'XX'}-GEN`,
-        orderNumber: selectedOrder.orderNumber?.split('-').pop() || '001',
-        orderDate: selectedOrder.orderDate || new Date().toISOString().split('T')[0],
-        deliveryDate: selectedOrder.deliveryDate || '',
-        deliveryTime: selectedOrder.deliveryTime || ''
-      });
-
-      setBoxes(selectedOrder.boxes || []);
-      setExtraDiscount(selectedOrder.extraDiscount || { value: 0, type: 'value' });
-      setAdvancePaid(selectedOrder.advancePaid || 0);
-      setNotes(selectedOrder.notes || '');
-      setMessage('');
-      setEditOrderNumber(false);
-
-      if (selectedOrder._id) {
-        setEditingOrderId(selectedOrder._id);
-      }
+    // ✅ FIXED: Properly extract order prefix and number
+    const orderNumberParts = selectedOrder.orderNumber?.split('-') || [];
+    let extractedPrefix = 'XX-GEN';
+    let extractedNumber = '001';
+    
+    if (orderNumberParts.length >= 3) {
+      // Format: BD-GEN-001
+      extractedPrefix = `${orderNumberParts[0]}-${orderNumberParts[1]}`;
+      extractedNumber = orderNumberParts[2];
+    } else if (orderNumberParts.length === 2) {
+      // Format: BD-001 (fallback)
+      extractedPrefix = `${orderNumberParts[0]}-GEN`;
+      extractedNumber = orderNumberParts[1];
     }
-  }, [selectedOrder, currentUser.branch]);
+
+    setOrderInfo({
+      occasion: selectedOrder.occasion || 'General',
+      orderPrefix: extractedPrefix,
+      orderNumber: extractedNumber,
+      orderDate: selectedOrder.orderDate || new Date().toISOString().split('T')[0],
+      deliveryDate: selectedOrder.deliveryDate || '',
+      deliveryTime: selectedOrder.deliveryTime || ''
+    });
+
+    setBoxes(selectedOrder.boxes || []);
+    setExtraDiscount(selectedOrder.extraDiscount || { value: 0, type: 'value' });
+    setAdvancePaid(selectedOrder.advancePaid || 0);
+    setNotes(selectedOrder.notes || '');
+    setMessage('');
+    setEditOrderNumber(false);
+    setEditingOrderId(selectedOrder._id);
+    
+    console.log('✅ Order loaded for editing:', {
+      orderId: selectedOrder._id,
+      orderNumber: selectedOrder.orderNumber,
+      extractedPrefix,
+      extractedNumber
+    });
+  }
+}, [selectedOrder, currentUser.branch]);
 
   // Update totals when boxes/discounts change
   useEffect(() => {
@@ -1314,6 +1625,26 @@ useEffect(() => {
         existingDraftId = checkData.draftId;
       }
       
+      // ✅ FIXED: Determine branch correctly for auto-save
+      const determineBranch = () => {
+        if (currentUser.role === 'admin') {
+          // For admin, use the branch from the order prefix
+          const prefixBranch = orderInfo.orderPrefix.split('-')[0];
+          const branchName = Object.keys(branches).find(name => branches[name] === prefixBranch);
+          return branchName || 'Misti Hub';
+        } else {
+          return currentUser.branch;
+        }
+      };
+
+      const determineBranchCode = () => {
+        if (currentUser.role === 'admin') {
+          return orderInfo.orderPrefix.split('-')[0];
+        } else {
+          return branches[currentUser.branch];
+        }
+      };
+      
       const autoSaveData = {
         customerName: customer.name,
         phone: customer.phone,
@@ -1324,15 +1655,8 @@ useEffect(() => {
         state: customer.state,
         ...orderInfo,
         orderNumber: draftOrderNumber,
-        branch: currentUser.role === 'admin' && selectedBranch 
-          ? selectedBranch 
-          : currentUser.branch,
-        branchCode: (() => {
-          const actualBranchCode = currentUser.role === 'admin' && selectedBranch
-            ? branches[selectedBranch] 
-            : (branchPrefixes[currentUser.branch] || branches[currentUser.branch]);
-          return actualBranchCode === 'HO' ? 'BD' : actualBranchCode;
-        })(),
+        branch: determineBranch(),
+        branchCode: determineBranchCode(),
         createdBy: currentUser.displayName || currentUser.username || 'Unknown',
         boxes: boxes.map(calculateTotals),
         notes,
@@ -1351,21 +1675,27 @@ useEffect(() => {
       if (existingDraftId) {
         // Update existing draft
         autoSaveData._id = existingDraftId;
-        await saveOrder(autoSaveData, existingDraftId);
-        console.log('💾 Auto-save: Updated existing draft', existingDraftId);
-      } else {
-        // Create new draft only if order number is truly unique
-        const isUnique = await checkOrderNumberUnique(orderInfo.orderPrefix, orderInfo.orderNumber);
-        if (isUnique) {
-          await saveOrder(autoSaveData);
-          console.log('💾 Auto-save: Created new draft');
-        } else {
-          console.log('🚫 Auto-save skipped: Order number already exists');
-        }
       }
       
-      if (isMounted) {
-        setLastSavedTime(new Date().toLocaleTimeString());
+      // ✅ FIXED: Use correct branch code for API call
+      const branchCodeForAPI = autoSaveData.branchCode.toLowerCase();
+      const saveResponse = await apiCall(`/orders/${branchCodeForAPI}`, {
+        method: 'POST',
+        body: JSON.stringify(autoSaveData)
+      });
+      
+      if (saveResponse.ok) {
+        if (existingDraftId) {
+          console.log('💾 Auto-save: Updated existing draft', existingDraftId);
+        } else {
+          console.log('💾 Auto-save: Created new draft');
+        }
+        
+        if (isMounted) {
+          setLastSavedTime(new Date().toLocaleTimeString());
+        }
+      } else {
+        console.log('❌ Auto-save failed with status:', saveResponse.status);
       }
     } catch (error) {
       console.log('❌ Auto-save failed:', error);
@@ -1622,8 +1952,8 @@ useEffect(() => {
               <option value="General">General</option>
               <option disabled>────────────</option>
               {availableOccasions.filter(o => o !== 'General').map((occasion) => (
-                <option key={occasion} value={occasion}>{occasion}</option>
-              ))}
+  <option key={`available-${occasion}`} value={occasion}>{occasion}</option>
+))}
               <option value="__add_new__">+ Add Custom Occasion</option>
             </select>
           </div>
@@ -1661,12 +1991,12 @@ useEffect(() => {
     title="Branch Code"
   >
         {Object.entries(branches)
-          .sort(([,a], [,b]) => a.localeCompare(b)) // Sort by branch code alphabetically
-          .map(([branchName, branchCode]) => (
-            <option key={branchCode} value={branchCode}>
-              {branchCode}
-            </option>
-          ))}
+  .sort(([,a], [,b]) => a.localeCompare(b))
+  .map(([branchName, branchCode]) => (
+    <option key={`branch-${branchCode}`} value={branchCode}>
+      {branchCode}
+    </option>
+  ))}
       </select>
     ) : (
       <input
@@ -1706,12 +2036,12 @@ useEffect(() => {
         title="Occasion Code"
       >
         {Object.entries(occasions)
-          .sort(([,a], [,b]) => a.localeCompare(b)) // Sort by occasion code alphabetically
-          .map(([occasionName, occasionCode]) => (
-            <option key={occasionCode} value={occasionCode}>
-              {occasionCode}
-            </option>
-          ))}
+  .sort(([,a], [,b]) => a.localeCompare(b))
+  .map(([occasionName, occasionCode]) => (
+    <option key={`occasion-${occasionCode}`} value={occasionCode}>
+      {occasionCode}
+    </option>
+  ))}
       </select>
     ) : (
       <input
@@ -1803,62 +2133,70 @@ useEffect(() => {
             <div className="item-row" key={item.id} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
               {!item.name || item.name !== '__custom__' ? (
                 // Regular item dropdown
-                <select
-    value={item.name || ""}
-    onChange={(e) => {
-      const selectedValue = e.target.value;
-      
-      const updatedBoxes = boxes.map(b => {
-        if (b.id !== box.id) return b;
-        const updatedItems = b.items.map(i => {
-          if (i.id !== item.id) return i;
-          
-          if (selectedValue === "__custom__") {
-            return {
-              ...i,
-              name: "__custom__",
-              customName: false
-            };
-          } else if (selectedValue) {
-            const selected = itemList.find(listItem => listItem.name === selectedValue);
-            if (selected) {
-              return {
-                ...i,
-                name: selected.name,
-                price: selected.price,
-                unit: selected.unit || 'pcs',
-                amount: i.qty * selected.price,
-                customName: false
-              };
-            }
-          }
-          
+                // Fix 2: Also update the item dropdown rendering to ensure it stays sorted:
+// In your item dropdown section, replace with:
+<select
+  value={item.name || ""}
+  onChange={(e) => {
+    const selectedValue = e.target.value;
+    
+    const updatedBoxes = boxes.map(b => {
+      if (b.id !== box.id) return b;
+      const updatedItems = b.items.map(i => {
+        if (i.id !== item.id) return i;
+        
+        if (selectedValue === "__custom__") {
           return {
             ...i,
-            name: selectedValue,
+            name: "__custom__",
             customName: false
           };
-        });
-        return { ...b, items: updatedItems };
+        } else if (selectedValue) {
+          const selected = itemList.find(listItem => listItem.name === selectedValue);
+          if (selected) {
+            return {
+              ...i,
+              name: selected.name,
+              price: selected.price,
+              unit: selected.unit || 'pcs',
+              amount: i.qty * selected.price,
+              customName: false
+            };
+          }
+        }
+        
+        return {
+          ...i,
+          name: selectedValue,
+          customName: false
+        };
       });
-      
-      setBoxes(updatedBoxes);
-    }}
-    style={{ flex: 2 }}
-    className={(!item.name || (item.name === "__custom__" && !item.customName)) ? 'error-field' : ''}
-  >
-    <option value="">Select Item</option>
-    {itemList.map((i, index) => (
-      <option key={index} value={i.name}>{i.name}</option>
-    ))}
-    <option value="__custom__">+ Custom Item</option>
-  </select>
+      return { ...b, items: updatedItems };
+    });
+    
+    setBoxes(updatedBoxes);
+  }}
+  style={{ flex: 2 }}
+  className={(!item.name || (item.name === "__custom__" && !item.customName)) ? 'error-field' : ''}
+>
+  <option value="">Select Item</option>
+  {/* ✅ FIXED: Items are already sorted, but ensure they stay sorted in display */}
+  {itemList
+    .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()))
+    .map((i, index) => (
+      <option key={`item-${i.name}-${index}`} value={i.name}>
+        {i.name}
+      </option>
+    ))
+  }
+  <option value="__custom__">+ Custom Item</option>
+</select>
 ) : (
   // ✅ FIXED: Custom item input field
   <input
     type="text"
     placeholder="Enter custom item name"
-    value={item.customName ? item.name : ''}
+    value={item.name === '__custom__' ? '' : item.name || ''}
     onChange={(e) => {
       const newValue = e.target.value;
       
@@ -1871,7 +2209,7 @@ useEffect(() => {
           return {
             ...i,
             name: newValue,
-            customName: true // Mark as having custom name
+            customName: newValue.length > 0
           };
         });
         
@@ -1881,8 +2219,8 @@ useEffect(() => {
       setBoxes(updatedBoxes);
     }}
     style={{ flex: 2 }}
-    className={!item.customName || !item.name ? 'error-field' : ''}
-    autoFocus // Auto-focus when switching to custom
+    className={(!item.customName || !item.name) ? 'error-field' : ''}
+    autoFocus
   />
 )}
               

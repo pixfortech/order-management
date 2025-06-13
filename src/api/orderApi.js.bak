@@ -57,12 +57,24 @@ const apiCall = async (endpoint, options = {}) => {
 
 export const saveOrder = async (orderData, editingOrderId = null) => {
   try {
+    // ✅ DEBUG: Log the branch code being used
+    console.log('🔍 === FRONTEND API DEBUG ===');
+    console.log('📊 Order data branchCode:', orderData.branchCode);
+    console.log('📊 Order data branchCode type:', typeof orderData.branchCode);
+    console.log('📊 Order data branch:', orderData.branch);
+    console.log('🔍 === END FRONTEND DEBUG ===');
+    
     // Use the branchCode from orderData to determine which collection to save to
-    const branchCode = orderData.branchCode.toLowerCase();
+    const branchCode = orderData.branchCode ? orderData.branchCode.toLowerCase() : '';
+    
+    if (!branchCode) {
+      throw new Error('Branch code is missing from order data');
+    }
     
     console.log('💾 Saving order to branch collection:', `orders_${branchCode}`);
     console.log('📊 Order data branch:', orderData.branch);
     console.log('🏷️ Order data branchCode:', orderData.branchCode);
+    console.log('🔗 API endpoint will be:', `/orders/${branchCode}`);
     
     if (editingOrderId) {
       // Update existing order
@@ -73,6 +85,7 @@ export const saveOrder = async (orderData, editingOrderId = null) => {
       
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('❌ Update order error response:', errorData);
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
       
@@ -86,13 +99,14 @@ export const saveOrder = async (orderData, editingOrderId = null) => {
       
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('❌ Save order error response:', errorData);
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
       
       return await response.json();
     }
   } catch (error) {
-    console.error('Save order error:', error);
+    console.error('❌ Save order error:', error);
     throw error;
   }
 };

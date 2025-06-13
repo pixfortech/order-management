@@ -7,6 +7,7 @@ import {
 import './OrderTabs.css';
 import { useAuth } from '../auth/AuthContext';
 import ViewOrderModal from './ViewOrderModal';
+import PrintOrderModal from './PrintOrderModal';
 
 const displayName = localStorage.getItem('displayName') || '{displayName}';
 const stripTime = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -45,7 +46,9 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   });
   
   const [expandedOrders, setExpandedOrders] = useState({});
+  const [printOrder, setPrintOrder] = useState(null);
   const [viewOrder, setViewOrder] = useState(null);
+  
 
   // Fetch master data (branches and occasions)
   useEffect(() => {
@@ -198,8 +201,8 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   };
 
   const handlePrint = (order) => {
-    setViewOrder({ ...order, triggerPrint: true });
-  };
+  setPrintOrder(order);
+};
 
   const handleEdit = (order) => {
     setSelectedOrder(order);
@@ -578,6 +581,12 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
           onPrint={handlePrint}
         />
       )}
+	  {printOrder && (
+  <PrintOrderModal
+    order={printOrder}
+    onClose={() => setPrintOrder(null)}
+  />
+)}
     </div>
   );
 };
