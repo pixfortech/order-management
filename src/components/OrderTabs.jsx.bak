@@ -8,7 +8,6 @@ import './OrderTabs.css';
 import { useAuth } from '../auth/AuthContext';
 import ViewOrderModal from './ViewOrderModal';
 import PrintOrderModal from './PrintOrderModal';
-import EmailOrderModal from './EmailOrderModal';
 
 const displayName = localStorage.getItem('displayName') || '{displayName}';
 const stripTime = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -49,7 +48,7 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   const [expandedOrders, setExpandedOrders] = useState({});
   const [printOrder, setPrintOrder] = useState(null);
   const [viewOrder, setViewOrder] = useState(null);
-  const [emailOrder, setEmailOrder] = useState(null);
+  
 
   // Fetch master data (branches and occasions)
   useEffect(() => {
@@ -187,23 +186,50 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
     fetchOrders();
   }, [fetchOrders]);
 
-  const deleteOrder = async (id) => {
-    if (!window.confirm('Delete this order?')) return;
+  const deleteOrder = async (order) => {
+    if (!window.confirm(`Delete order ${order.orderNumber}?`)) return;
+    
     try {
       const token = localStorage.getItem('authToken');
-      await axios.delete(`/api/orders/${id}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      
+      // ✅ FIXED: Use proper API URL with branch code like other endpoints
+      const getApiUrl = () => {
+        if (process.env.REACT_APP_API_URL) {
+          return process.env.REACT_APP_API_URL;
+        }
+        if (window.location.hostname === 'localhost') {
+          return 'http://localhost:5000';
+        }
+        return 'https://order-management-fbre.onrender.com';
+      };
+      
+      const baseUrl = getApiUrl();
+      const branchCode = order.branchCode?.toLowerCase() || user?.branchCode?.toLowerCase();
+      const endpoint = `${baseUrl}/api/orders/${branchCode}/${order._id}`;
+      
+      console.log('🗑️ Deleting order from:', endpoint);
+      
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
-      fetchOrders();
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Delete failed: ${response.status} - ${errorText}`);
+      }
+      
+      console.log('✅ Order deleted successfully');
+      fetchOrders(); // Refresh the list
+      
     } catch (err) {
-      console.error('Delete failed:', err);
-      alert('Failed to delete order. Please try again.');
+      console.error('❌ Delete failed:', err);
+      alert(`Failed to delete order: ${err.message}`);
     }
   };
-
-const handleEmail = (order) => {
-  setEmailOrder(order);
-};
 
   const handlePrint = (order) => {
   setPrintOrder(order);
@@ -240,40 +266,68 @@ const handleEmail = (order) => {
 
   const hasChangelog = (orderId) => changelogData?.[orderId]?.length >= 1;
 
-  const groupSubOrders = () => {
+  // ✅ FIXED: Completely rewritten grouping logic
+  const processOrders = () => {
     // Safety check: ensure orders is an array
     if (!Array.isArray(orders)) {
       console.warn('Orders is not an array:', orders);
-      return {};
+      return [];
     }
     
-    const grouped = {};
+    // Group orders by full order number to handle duplicates
+    const orderMap = {};
+    
     orders.forEach(order => {
-      const base = order.orderNumber.split('-').slice(0, 2).join('-');
-      if (!grouped[base]) grouped[base] = { main: order, subs: [] };
+      const orderNumber = order.orderNumber;
+      
+      if (!orderMap[orderNumber]) {
+        orderMap[orderNumber] = order;
+      } else {
+        // If duplicate order number, keep the most recent one
+        if (new Date(order.createdAt) > new Date(orderMap[orderNumber].createdAt)) {
+          orderMap[orderNumber] = order;
+        }
+      }
+    });
+    
+    // Convert back to array and sort by order number (newest first)
+    const uniqueOrders = Object.values(orderMap).sort((a, b) => {
+      // Sort by creation date, newest first
+      return new Date(b.createdAt || b.orderDate) - new Date(a.createdAt || a.orderDate);
+    });
+    
+    console.log('📋 Processed unique orders:', uniqueOrders.length);
+    return uniqueOrders;
+  };
 
-      const totalBoxes = order.boxes.length;
-      grouped[base].boxCount = totalBoxes;
-
-      order.boxes.forEach((box, i) => {
-        const boxSubtotal = box.items.reduce((sum, item) => sum + item.qty * item.price, 0);
-        const total = boxSubtotal * box.boxCount;
-        const discount = box.discount > 0 ? box.discount * box.boxCount : 0;
-        const boxTotal = total - discount;
-        const boxAdvance = (order.advancePaid || 0) / totalBoxes;
-
-        grouped[base].subs.push({
-          ...order,
-          boxIndex: i,
-          subLabel: `-${chars[i]}`,
-          grandTotal: boxTotal,
-          advancePaid: boxAdvance,
-          box,
-        });
+  // ✅ FIXED: New function to create box breakdown for multi-box orders
+  const createBoxBreakdown = (order) => {
+    if (!order.boxes || order.boxes.length <= 1) {
+      return null; // Single box order, no breakdown needed
+    }
+    
+    const breakdown = [];
+    const totalBoxCount = order.boxes.reduce((sum, box) => sum + (box.boxCount || 1), 0);
+    const advancePerBox = (order.advancePaid || 0) / totalBoxCount;
+    
+    order.boxes.forEach((box, index) => {
+      const boxSubtotal = box.items.reduce((sum, item) => sum + (item.qty * item.price), 0);
+      const boxTotal = (boxSubtotal * (box.boxCount || 1)) - ((box.discount || 0) * (box.boxCount || 1));
+      const boxAdvance = advancePerBox * (box.boxCount || 1);
+      
+      breakdown.push({
+        ...order,
+        boxIndex: index,
+        subLabel: `-${chars[index] || index}`,
+        grandTotal: boxTotal,
+        advancePaid: boxAdvance,
+        balance: boxTotal - boxAdvance,
+        box: box,
+        isSubOrder: true
       });
     });
-
-    return grouped;
+    
+    return breakdown;
   };
 
   const handleFilterChange = (key, value) => {
@@ -293,6 +347,9 @@ const handleEmail = (order) => {
       branch: ''
     });
   };
+
+  // ✅ FIXED: Process orders for rendering
+  const processedOrders = processOrders();
 
   return (
     <div className="order-tabs">
@@ -435,13 +492,13 @@ const handleEmail = (order) => {
             </button>
           </div>
         </div>
-      </div> {/* This was the missing closing div */}
+      </div>
 
       {isLoading ? (
         <div className="loading-container">
           Loading orders...
         </div>
-      ) : orders.length === 0 ? (
+      ) : processedOrders.length === 0 ? (
         <div className="empty-state">
           No orders found
         </div>
@@ -466,45 +523,48 @@ const handleEmail = (order) => {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(groupSubOrders()).flatMap(([baseOrder, { main, subs, boxCount }]) => {
-                const expanded = expandedOrders[baseOrder];
-                const hasMultipleBoxes = boxCount > 1;
-                const fullOrderTotal = subs.reduce((acc, sub) => acc + sub.grandTotal, 0);
-                const fullAdvance = subs.reduce((acc, sub) => acc + sub.advancePaid, 0);
-
-                return [
-                  <tr key={baseOrder} className="main-order">
+              {processedOrders.flatMap(order => {
+                const orderNumber = order.orderNumber;
+                const boxBreakdown = createBoxBreakdown(order);
+                const hasMultipleBoxes = boxBreakdown && boxBreakdown.length > 1;
+                const expanded = expandedOrders[orderNumber];
+                const totalBoxCount = order.boxes ? order.boxes.reduce((sum, box) => sum + (box.boxCount || 1), 0) : 1;
+                
+                // Main order row
+                const mainRow = (
+                  <tr key={orderNumber} className="main-order">
                     <td 
-                      onClick={() => hasMultipleBoxes && setExpandedOrders(prev => ({ ...prev, [baseOrder]: !prev[baseOrder] }))}
+                      onClick={() => hasMultipleBoxes && setExpandedOrders(prev => ({ ...prev, [orderNumber]: !prev[orderNumber] }))}
                       style={{ cursor: hasMultipleBoxes ? 'pointer' : 'default' }}
                     >
-                      {hasMultipleBoxes && (expanded ? <FaChevronDown /> : <FaChevronRight />)} {baseOrder}
-                      {hasMultipleBoxes ? ` (${boxCount} boxes)` : ''}
+                      {hasMultipleBoxes && (expanded ? <FaChevronDown /> : <FaChevronRight />)} 
+                      {orderNumber}
+                      {hasMultipleBoxes ? ` (${totalBoxCount} boxes)` : ''}
                     </td>
-                    <td className="customer-cell">{main.customerName}</td>
-                    <td className="phone-cell">{main.phone}</td>
+                    <td className="customer-cell">{order.customerName}</td>
+                    <td className="phone-cell">{order.phone}</td>
                     <td>
                       <div className="delivery-cell">
-                        <span className="delivery-date">{main.deliveryDate}</span>
-                        <span className="badge tag">{getDeliveryTagWithEmoji(main.deliveryDate)}</span>
+                        <span className="delivery-date">{order.deliveryDate}</span>
+                        <span className="badge tag">{getDeliveryTagWithEmoji(order.deliveryDate)}</span>
                       </div>
                     </td>
-                    <td>{main.deliveryTime}</td>
-                    <td>{main.occasion}</td>
+                    <td>{order.deliveryTime}</td>
+                    <td>{order.occasion}</td>
                     
                     {/* Branch Column - Only for Admin */}
                     {isAdmin && (
-                      <td>{branches[main.branchCode] || main.branch || 'Unknown'}</td>
+                      <td>{branches[order.branchCode] || order.branch || 'Unknown'}</td>
                     )}
                     
-                    <td>₹{fullOrderTotal.toFixed(2)}</td>
-                    <td><span className={`badge ${main.status}`}>{main.status}</span></td>
-                    <td>₹{(fullOrderTotal - fullAdvance).toFixed(2)}</td>
+                    <td>₹{(order.grandTotal || 0).toFixed(2)}</td>
+                    <td><span className={`badge ${order.status}`}>{order.status}</span></td>
+                    <td>₹{((order.grandTotal || 0) - (order.advancePaid || 0)).toFixed(2)}</td>
                     <td>
                       <select
-                        value={main.orderProgress || ''}
+                        value={order.orderProgress || ''}
                         className="progress-select"
-                        onChange={(e) => handleProgressChange(main, e.target.value)}
+                        onChange={(e) => handleProgressChange(order, e.target.value)}
                       >
                         <option value="">⏳ Pending</option>
                         <option value="Packed">📦 Packed</option>
@@ -515,47 +575,51 @@ const handleEmail = (order) => {
                     </td>
                     <td>
                       <div className="action-buttons">
-                        <button onClick={() => handleEdit(main)} title="Edit"><FaEdit /></button>
-                        <button onClick={() => setViewOrder({ ...main, boxViewMode: 'all' })} title="View"><FaEye /></button>
-                        <button onClick={() => handlePrint({ ...main, boxViewMode: 'all' })} title="Print All"><FaPrint /></button>
-                        {isAdmin && hasChangelog(main._id) && (
-                          <button onClick={() => viewChangelog(main._id)} title="Changelog"><FaScroll /></button>
+                        <button onClick={() => handleEdit(order)} title="Edit"><FaEdit /></button>
+                        <button onClick={() => setViewOrder({ ...order, boxViewMode: 'all' })} title="View"><FaEye /></button>
+                        <button onClick={() => handlePrint({ ...order, boxViewMode: 'all' })} title="Print All"><FaPrint /></button>
+                        {isAdmin && hasChangelog(order._id) && (
+                          <button onClick={() => viewChangelog(order._id)} title="Changelog"><FaScroll /></button>
                         )}
                         {isAdmin && (
-                          <button onClick={() => deleteOrder(main._id)} title="Delete"><FaTrash /></button>
+                          <button onClick={() => deleteOrder(order)} title="Delete"><FaTrash /></button>
                         )}
                       </div>
                     </td>
-                  </tr>,
-                  ...(hasMultipleBoxes && expanded ? subs.map((sub, i) => (
-                    <tr key={`${baseOrder}-${sub.subLabel}`} className="sub-order">
-                      <td title={`Box ${i + 1}: ${sub.box.items.map(it => `${it.name} x${it.qty}`).join(', ')}`}>
-                        &nbsp;&nbsp;&nbsp;&nbsp;↳ {baseOrder}{sub.subLabel}
+                  </tr>
+                );
+                
+                // Sub-order rows (only if expanded and has multiple boxes)
+                const subRows = (hasMultipleBoxes && expanded && boxBreakdown) ? 
+                  boxBreakdown.map((subOrder, index) => (
+                    <tr key={`${orderNumber}-${subOrder.subLabel}`} className="sub-order">
+                      <td title={`Box ${index + 1}: ${subOrder.box.items.map(it => `${it.name} x${it.qty}`).join(', ')}`}>
+                        &nbsp;&nbsp;&nbsp;&nbsp;↳ {orderNumber}{subOrder.subLabel}
                       </td>
-                      <td className="customer-cell">{sub.customerName}</td>
-                      <td className="phone-cell">{sub.phone}</td>
+                      <td className="customer-cell">{subOrder.customerName}</td>
+                      <td className="phone-cell">{subOrder.phone}</td>
                       <td>
                         <div className="delivery-cell">
-                          <span className="delivery-date">{sub.deliveryDate}</span>
-                          <span className="badge tag">{getDeliveryTagWithEmoji(sub.deliveryDate)}</span>
+                          <span className="delivery-date">{subOrder.deliveryDate}</span>
+                          <span className="badge tag">{getDeliveryTagWithEmoji(subOrder.deliveryDate)}</span>
                         </div>
                       </td>
-                      <td>{sub.deliveryTime}</td>
-                      <td>{sub.occasion}</td>
+                      <td>{subOrder.deliveryTime}</td>
+                      <td>{subOrder.occasion}</td>
                       
                       {/* Branch Column for sub-orders - Only for Admin */}
                       {isAdmin && (
-                        <td>{branches[sub.branchCode] || sub.branch || 'Unknown'}</td>
+                        <td>{branches[subOrder.branchCode] || subOrder.branch || 'Unknown'}</td>
                       )}
                       
-                      <td>₹{sub.grandTotal.toFixed(2)}</td>
-                      <td><span className={`badge ${sub.status}`}>{sub.status}</span></td>
-                      <td>₹{(sub.grandTotal - sub.advancePaid).toFixed(2)}</td>
+                      <td>₹{subOrder.grandTotal.toFixed(2)}</td>
+                      <td><span className={`badge ${subOrder.status}`}>{subOrder.status}</span></td>
+                      <td>₹{subOrder.balance.toFixed(2)}</td>
                       <td>
                         <select
-                          value={sub.orderProgress || ''}
+                          value={subOrder.orderProgress || ''}
                           className="progress-select"
-                          onChange={(e) => handleProgressChange(sub, e.target.value)}
+                          onChange={(e) => handleProgressChange(subOrder, e.target.value)}
                         >
                           <option value="">⏳ Pending</option>
                           <option value="Packed">📦 Packed</option>
@@ -566,13 +630,14 @@ const handleEmail = (order) => {
                       </td>
                       <td>
                         <div className="action-buttons">
-                          <button onClick={() => handlePrint({ ...sub, boxViewMode: i })} title="Print Box"><FaPrint /></button>
-                          <button onClick={() => setViewOrder({ ...sub, boxViewMode: i })} title="View"><FaEye /></button>
+                          <button onClick={() => handlePrint({ ...subOrder, boxViewMode: index })} title="Print Box"><FaPrint /></button>
+                          <button onClick={() => setViewOrder({ ...subOrder, boxViewMode: index })} title="View"><FaEye /></button>
                         </div>
                       </td>
                     </tr>
-                  )) : [])
-                ];
+                  )) : [];
+                
+                return [mainRow, ...subRows];
               })}
             </tbody>
           </table>
@@ -586,12 +651,12 @@ const handleEmail = (order) => {
           onPrint={handlePrint}
         />
       )}
-	  {printOrder && (
-  <PrintOrderModal
-    order={printOrder}
-    onClose={() => setPrintOrder(null)}
-  />
-)}
+      {printOrder && (
+        <PrintOrderModal
+          order={printOrder}
+          onClose={() => setPrintOrder(null)}
+        />
+      )}
     </div>
   );
 };

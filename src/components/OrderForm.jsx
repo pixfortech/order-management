@@ -422,33 +422,33 @@ const sendOrderEmail = async (orderData, isModification = false, changes = null)
   }
 };
 
-// Add this function to your OrderForm.jsx (after the sendOrderEmail function)
+// // Add this function to your OrderForm.jsx (after the sendOrderEmail function)
 
-// Function to cleanup auto-saved drafts after successful save
-const cleanupAutoSavedDrafts = async (orderNumber) => {
-  try {
-    console.log('🧹 Cleaning up auto-saved drafts for:', orderNumber);
+// // Function to cleanup auto-saved drafts after successful save
+// const cleanupAutoSavedDrafts = async (orderNumber) => {
+  // try {
+    // console.log('🧹 Cleaning up auto-saved drafts for:', orderNumber);
     
-    const response = await apiCall(`/orders/cleanup-drafts/${encodeURIComponent(orderNumber)}`, {
-      method: 'DELETE'
-    });
+    // const response = await apiCall(`/orders/cleanup-drafts/${encodeURIComponent(orderNumber)}`, {
+      // method: 'DELETE'
+    // });
     
-    if (response.ok) {
-      const result = await response.json();
-      console.log('✅ Auto-save cleanup successful:', result);
+    // if (response.ok) {
+      // const result = await response.json();
+      // console.log('✅ Auto-save cleanup successful:', result);
       
-      // Update message to show cleanup was performed
-      if (result.deletedCount > 0) {
-        setMessage(prev => prev + ` (Cleaned up ${result.deletedCount} auto-saved drafts)`);
-      }
-    } else {
-      console.warn('⚠️ Auto-save cleanup failed:', response.status);
-    }
-  } catch (error) {
-    console.warn('⚠️ Auto-save cleanup error (non-critical):', error);
-    // Don't throw error as this is a cleanup operation
-  }
-};
+      // // Update message to show cleanup was performed
+      // if (result.deletedCount > 0) {
+        // setMessage(prev => prev + ` (Cleaned up ${result.deletedCount} auto-saved drafts)`);
+      // }
+    // } else {
+      // console.warn('⚠️ Auto-save cleanup failed:', response.status);
+    // }
+  // } catch (error) {
+    // console.warn('⚠️ Auto-save cleanup error (non-critical):', error);
+    // // Don't throw error as this is a cleanup operation
+  // }
+// };
 
 const detectDetailedOrderChanges = (original, current) => {
   const changes = {
@@ -832,46 +832,91 @@ const generateUniqueOrderNumber = async () => {
   const toggleOrderSummary = () => setShowOrderSummary(!showOrderSummary);
   const toggleOrderSummaryMinimize = () => setIsOrderSummaryMinimized(!isOrderSummaryMinimized);
 
-  const handleCustomerChange = (e) => {
-    const { name, value } = e.target;
+  // ✅ ENHANCED handleCustomerChange with auto-formatting
+const handleCustomerChange = (e) => {
+  const { name, value } = e.target;
+  
+  let validatedValue = value;
+  let isValid = true;
+  
+  if (name === 'name') {
+    // ✅ AUTO-FORMAT: Convert to Proper Case after every space
+    validatedValue = value
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
     
-    let validatedValue = value;
-    let isValid = true;
+    // Validate only letters, spaces, and dots
+    if (!/^[A-Za-z\s.]*$/.test(value)) {
+      isValid = false;
+    }
+  } else if (name === 'phone') {
+    const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 10);
+    validatedValue = numbersOnly;
+    isValid = numbersOnly.length === 10 || numbersOnly.length === 0;
+  } else if (name === 'email') {
+    // ✅ AUTO-FORMAT: Convert to lowercase
+    validatedValue = value.toLowerCase();
     
-    if (name === 'name') {
-      if (!/^[A-Za-z\s.]*$/.test(value)) {
-        isValid = false;
-      }
-    } else if (name === 'phone') {
-      const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 10);
-      validatedValue = numbersOnly;
-      isValid = numbersOnly.length === 10 || numbersOnly.length === 0;
-    } else if (name === 'email' && value) {
-      isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-    } else if (name === 'pincode') {
-      const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 6);
-      validatedValue = numbersOnly;
-      
-      if (numbersOnly.length === 6) {
-        const pincodeMap = {
-          '700006': { city: 'Kolkata', state: 'West Bengal' },
-          '110001': { city: 'New Delhi', state: 'Delhi' },
-          '400001': { city: 'Mumbai', state: 'Maharashtra' }
-        };
+    // Validate email format (only if value exists)
+    if (value) {
+      isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(validatedValue);
+    }
+  } else if (name === 'address') {
+    // ✅ AUTO-FORMAT: Convert to Proper Case
+    validatedValue = value
+      .toLowerCase()
+      .split(' ')
+      .map(word => {
+        // Handle common abbreviations and special cases
+        const upperCaseWords = ['PO', 'PIN', 'DT', 'PS', 'GP', 'VIA', 'CO'];
+        const upperWord = word.toUpperCase();
         
-        if (pincodeMap[numbersOnly]) {
-          setCustomer(prev => ({
-            ...prev,
-            city: pincodeMap[numbersOnly].city,
-            state: pincodeMap[numbersOnly].state
-          }));
-        } else {
-          setCustomer(prev => ({
-            ...prev,
-            city: '',
-            state: ''
-          }));
+        if (upperCaseWords.includes(upperWord)) {
+          return upperWord;
         }
+        
+        // Handle words with numbers (like "123A" or "Block-B")
+        if (/\d/.test(word)) {
+          return word.toUpperCase();
+        }
+        
+        // Regular proper case for other words
+        return word.charAt(0).toUpperCase() + word.slice(1);
+      })
+      .join(' ');
+  } else if (name === 'city') {
+    // ✅ AUTO-FORMAT: Convert to Proper Case
+    validatedValue = value
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  } else if (name === 'state') {
+    // ✅ AUTO-FORMAT: Convert to Proper Case
+    validatedValue = value
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  } else if (name === 'pincode') {
+    const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 6);
+    validatedValue = numbersOnly;
+    
+    if (numbersOnly.length === 6) {
+      const pincodeMap = {
+        '700006': { city: 'Kolkata', state: 'West Bengal' },
+        '110001': { city: 'New Delhi', state: 'Delhi' },
+        '400001': { city: 'Mumbai', state: 'Maharashtra' }
+      };
+      
+      if (pincodeMap[numbersOnly]) {
+        setCustomer(prev => ({
+          ...prev,
+          city: pincodeMap[numbersOnly].city,
+          state: pincodeMap[numbersOnly].state
+        }));
       } else {
         setCustomer(prev => ({
           ...prev,
@@ -879,27 +924,34 @@ const generateUniqueOrderNumber = async () => {
           state: ''
         }));
       }
-    }
-    
-    setCustomer(prev => ({ ...prev, [name]: validatedValue }));
-    
-    if (!isValid && value) {
-      setValidationErrors(prev => ({
+    } else {
+      setCustomer(prev => ({
         ...prev,
-        [name]: `Invalid ${name}`
-      }));
-    } else if (value && validationErrors[name]) {
-      setValidationErrors(prev => ({
-        ...prev,
-        [name]: null
-      }));
-    } else if (!value) {
-      setValidationErrors(prev => ({
-        ...prev,
-        [name]: `${name.charAt(0).toUpperCase() + name.slice(1)} is required`
+        city: '',
+        state: ''
       }));
     }
-  };
+  }
+  
+  setCustomer(prev => ({ ...prev, [name]: validatedValue }));
+  
+  if (!isValid && value) {
+    setValidationErrors(prev => ({
+      ...prev,
+      [name]: `Invalid ${name}`
+    }));
+  } else if (value && validationErrors[name]) {
+    setValidationErrors(prev => ({
+      ...prev,
+      [name]: null
+    }));
+  } else if (!value && (name === 'name' || name === 'phone')) {
+    setValidationErrors(prev => ({
+      ...prev,
+      [name]: `${name.charAt(0).toUpperCase() + name.slice(1)} is required`
+    }));
+  }
+};
   
   // Also fix your handleOrderChange function:
 const handleOrderChange = (e) => {
@@ -1315,11 +1367,11 @@ const addItem = (boxId) => {
     setMessage(`✅ Order ${status === 'held' ? 'held' : 'saved'} successfully!`);
     setLastSavedTime(new Date().toLocaleTimeString());
 
-    // ===== CLEANUP AUTO-SAVED DRAFTS =====
-    if (status === 'saved' || status === 'held') {
-      // Cleanup auto-saved drafts for this order number (runs in background)
-      cleanupAutoSavedDrafts(fullOrderNumber);
-    }
+    // // ===== CLEANUP AUTO-SAVED DRAFTS =====
+    // if (status === 'saved' || status === 'held') {
+      // // Cleanup auto-saved drafts for this order number (runs in background)
+      // cleanupAutoSavedDrafts(fullOrderNumber);
+    // }
 
     // ===== EMAIL HANDLING =====
     try {
@@ -1882,151 +1934,151 @@ useEffect(() => {
   // IMPROVED AUTO-SAVE WITH DRAFT MANAGEMENT - Replace the entire auto-save useEffect
 // Replace your auto-save useEffect in OrderForm.jsx with this improved version:
 
-useEffect(() => {
-  let isMounted = true;
-  let autoSaveTimer;
-  let lastAutoSaveData = null; // Track last auto-saved data to prevent duplicates
+// useEffect(() => {
+  // let isMounted = true;
+  // let autoSaveTimer;
+  // let lastAutoSaveData = null; // Track last auto-saved data to prevent duplicates
   
-  const performAutoSave = async () => {
-    if (!isMounted) return;
+  // const performAutoSave = async () => {
+    // if (!isMounted) return;
     
-    // Enhanced conditions for auto-save
-    const shouldAutoSave = (
-      customer.name?.trim() && 
-      customer.phone?.trim() && 
-      orderInfo.orderPrefix && 
-      orderInfo.orderNumber &&
-      !editingOrderId && // Don't auto-save when editing existing orders
-      boxes.some(box => box.items.some(item => item.name && item.name !== '')) && // At least one item
-      calculateGrandTotal() > 0 && // Total > 0
-      currentUser.branch !== 'Loading...' && // User data loaded
-      !isCheckingOrderNumber // Don't auto-save while checking order number
-    );
+    // // Enhanced conditions for auto-save
+    // const shouldAutoSave = (
+      // customer.name?.trim() && 
+      // customer.phone?.trim() && 
+      // orderInfo.orderPrefix && 
+      // orderInfo.orderNumber &&
+      // !editingOrderId && // Don't auto-save when editing existing orders
+      // boxes.some(box => box.items.some(item => item.name && item.name !== '')) && // At least one item
+      // calculateGrandTotal() > 0 && // Total > 0
+      // currentUser.branch !== 'Loading...' && // User data loaded
+      // !isCheckingOrderNumber // Don't auto-save while checking order number
+    // );
     
-    if (!shouldAutoSave) {
-      console.log('🚫 Auto-save skipped - conditions not met');
-      return;
-    }
+    // if (!shouldAutoSave) {
+      // console.log('🚫 Auto-save skipped - conditions not met');
+      // return;
+    // }
     
-    try {
-      const draftOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
+    // try {
+      // const draftOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
       
-      // Determine branch correctly for auto-save
-      const determineBranch = () => {
-        if (currentUser.role === 'admin') {
-          // For admin, use the branch from the order prefix
-          const prefixBranch = orderInfo.orderPrefix.split('-')[0];
-          const branchName = Object.keys(branches).find(name => branches[name] === prefixBranch);
-          return branchName || 'Beadon Street';
-        } else {
-          return currentUser.branch;
-        }
-      };
+      // // Determine branch correctly for auto-save
+      // const determineBranch = () => {
+        // if (currentUser.role === 'admin') {
+          // // For admin, use the branch from the order prefix
+          // const prefixBranch = orderInfo.orderPrefix.split('-')[0];
+          // const branchName = Object.keys(branches).find(name => branches[name] === prefixBranch);
+          // return branchName || 'Beadon Street';
+        // } else {
+          // return currentUser.branch;
+        // }
+      // };
 
-      const determineBranchCode = () => {
-        if (currentUser.role === 'admin') {
-          return orderInfo.orderPrefix.split('-')[0];
-        } else {
-          return branches[currentUser.branch];
-        }
-      };
+      // const determineBranchCode = () => {
+        // if (currentUser.role === 'admin') {
+          // return orderInfo.orderPrefix.split('-')[0];
+        // } else {
+          // return branches[currentUser.branch];
+        // }
+      // };
       
-      const autoSaveData = {
-        customerName: customer.name,
-        phone: customer.phone,
-        address: customer.address,
-        email: customer.email,
-        pincode: customer.pincode,
-        city: customer.city,
-        state: customer.state,
-        ...orderInfo,
-        orderNumber: draftOrderNumber,
-        branch: determineBranch(),
-        branchCode: determineBranchCode(),
-        createdBy: currentUser.displayName || currentUser.username || 'Unknown',
-        boxes: boxes.map(calculateTotals),
-        notes,
-        extraDiscount: {
-          value: extraDiscount.value || 0,
-          type: extraDiscount.type || 'value'
-        },
-        advancePaid: advancePaid || 0,
-        totalBoxCount: calculateTotalBoxCount(),
-        grandTotal: calculateGrandTotal(),
-        balance: calculateGrandTotal() - (advancePaid || 0),
-        status: 'auto-saved',
-        isDraft: true // Mark as draft
-      };
+      // const autoSaveData = {
+        // customerName: customer.name,
+        // phone: customer.phone,
+        // address: customer.address,
+        // email: customer.email,
+        // pincode: customer.pincode,
+        // city: customer.city,
+        // state: customer.state,
+        // ...orderInfo,
+        // orderNumber: draftOrderNumber,
+        // branch: determineBranch(),
+        // branchCode: determineBranchCode(),
+        // createdBy: currentUser.displayName || currentUser.username || 'Unknown',
+        // boxes: boxes.map(calculateTotals),
+        // notes,
+        // extraDiscount: {
+          // value: extraDiscount.value || 0,
+          // type: extraDiscount.type || 'value'
+        // },
+        // advancePaid: advancePaid || 0,
+        // totalBoxCount: calculateTotalBoxCount(),
+        // grandTotal: calculateGrandTotal(),
+        // balance: calculateGrandTotal() - (advancePaid || 0),
+        // status: 'auto-saved',
+        // isDraft: true // Mark as draft
+      // };
       
-      // ✅ PREVENT DUPLICATE AUTO-SAVES
-      // Create a hash of the important data to compare
-      const dataHash = JSON.stringify({
-        customer: customer,
-        boxes: boxes,
-        notes: notes,
-        extraDiscount: extraDiscount,
-        advancePaid: advancePaid,
-        orderInfo: orderInfo
-      });
+      // // ✅ PREVENT DUPLICATE AUTO-SAVES
+      // // Create a hash of the important data to compare
+      // const dataHash = JSON.stringify({
+        // customer: customer,
+        // boxes: boxes,
+        // notes: notes,
+        // extraDiscount: extraDiscount,
+        // advancePaid: advancePaid,
+        // orderInfo: orderInfo
+      // });
       
-      // Skip if data hasn't changed since last auto-save
-      if (lastAutoSaveData === dataHash) {
-        console.log('🚫 Auto-save skipped - no changes since last save');
-        return;
-      }
+      // // Skip if data hasn't changed since last auto-save
+      // if (lastAutoSaveData === dataHash) {
+        // console.log('🚫 Auto-save skipped - no changes since last save');
+        // return;
+      // }
       
-      // ✅ CHECK FOR EXISTING DRAFT BEFORE CREATING NEW ONE
-      const checkResponse = await apiCall(`/orders/check-draft?orderNumber=${encodeURIComponent(draftOrderNumber)}`);
+      // // ✅ CHECK FOR EXISTING DRAFT BEFORE CREATING NEW ONE
+      // const checkResponse = await apiCall(`/orders/check-draft?orderNumber=${encodeURIComponent(draftOrderNumber)}`);
       
-      let existingDraftId = null;
-      if (checkResponse.ok) {
-        const checkData = await checkResponse.json();
-        existingDraftId = checkData.draftId;
-      }
+      // let existingDraftId = null;
+      // if (checkResponse.ok) {
+        // const checkData = await checkResponse.json();
+        // existingDraftId = checkData.draftId;
+      // }
       
-      if (existingDraftId) {
-        // Update existing draft instead of creating new one
-        autoSaveData._id = existingDraftId;
-        console.log('💾 Auto-save: Updating existing draft', existingDraftId);
-      } else {
-        console.log('💾 Auto-save: Creating new draft');
-      }
+      // if (existingDraftId) {
+        // // Update existing draft instead of creating new one
+        // autoSaveData._id = existingDraftId;
+        // console.log('💾 Auto-save: Updating existing draft', existingDraftId);
+      // } else {
+        // console.log('💾 Auto-save: Creating new draft');
+      // }
       
-      const branchCodeForAPI = autoSaveData.branchCode.toLowerCase();
-      const saveResponse = await apiCall(`/orders/${branchCodeForAPI}`, {
-        method: 'POST',
-        body: JSON.stringify(autoSaveData)
-      });
+      // const branchCodeForAPI = autoSaveData.branchCode.toLowerCase();
+      // const saveResponse = await apiCall(`/orders/${branchCodeForAPI}`, {
+        // method: 'POST',
+        // body: JSON.stringify(autoSaveData)
+      // });
       
-      if (saveResponse.ok) {
-        lastAutoSaveData = dataHash; // Update last saved data hash
+      // if (saveResponse.ok) {
+        // lastAutoSaveData = dataHash; // Update last saved data hash
         
-        if (isMounted) {
-          setLastSavedTime(new Date().toLocaleTimeString());
-        }
+        // if (isMounted) {
+          // setLastSavedTime(new Date().toLocaleTimeString());
+        // }
         
-        console.log('✅ Auto-save successful:', existingDraftId ? 'Updated existing draft' : 'Created new draft');
-      } else {
-        console.log('❌ Auto-save failed with status:', saveResponse.status);
-      }
-    } catch (error) {
-      console.log('❌ Auto-save failed:', error);
-      // Don't show error messages for auto-save failures
-    }
-  };
+        // console.log('✅ Auto-save successful:', existingDraftId ? 'Updated existing draft' : 'Created new draft');
+      // } else {
+        // console.log('❌ Auto-save failed with status:', saveResponse.status);
+      // }
+    // } catch (error) {
+      // console.log('❌ Auto-save failed:', error);
+      // // Don't show error messages for auto-save failures
+    // }
+  // };
   
-  // Set up auto-save timer (every 45 seconds - reduced frequency)
-  if (isMounted) {
-    autoSaveTimer = setInterval(performAutoSave, 45000);
-  }
+  // // Set up auto-save timer (every 45 seconds - reduced frequency)
+  // if (isMounted) {
+    // autoSaveTimer = setInterval(performAutoSave, 45000);
+  // }
   
-  return () => {
-    isMounted = false;
-    if (autoSaveTimer) {
-      clearInterval(autoSaveTimer);
-    }
-  };
-}, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, editingOrderId, isCheckingOrderNumber]);
+  // return () => {
+    // isMounted = false;
+    // if (autoSaveTimer) {
+      // clearInterval(autoSaveTimer);
+    // }
+  // };
+// }, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, editingOrderId, isCheckingOrderNumber]);
 
 // ✅ ALSO ADD A CLEANUP ON COMPONENT UNMOUNT
 useEffect(() => {
@@ -2917,9 +2969,9 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
         </div>
       )}
       
-      <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#777' }}>
-        {lastSavedTime && <p>💾 Auto-saved at {lastSavedTime}</p>}
-      </div>
+      // <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#777' }}>
+        // {lastSavedTime && <p>💾 Auto-saved at {lastSavedTime}</p>}
+      // </div>
     </div>
   );
 });
