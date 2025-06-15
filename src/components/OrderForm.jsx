@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { FaEdit } from 'react-icons/fa';
 import './OrderForm.css';
+// Add this line after your existing imports
+console.log('🔧 UUID Test:', uuidv4()); // Test if UUID is working
 
 // Dynamic data will be fetched from API
 let branchPrefixes = {};
@@ -128,13 +130,30 @@ const initialItem = {
   unit: 'pcs'
 };
 
-const initialBox = {
-  id: uuidv4(),
-  items: [{ ...initialItem, id: uuidv4() }],
-  discount: 0,
-  boxCount: 1,
-  total: 0,
+const createInitialBox = () => {
+  const newItemId = uuidv4();
+  const newBoxId = uuidv4();
+  
+  console.log('🆕 Creating new box:', newBoxId, 'with item:', newItemId);
+  
+  return {
+    id: newBoxId,
+    items: [{ 
+      id: newItemId, // Ensure unique ID
+      name: '',
+      qty: 1,
+      price: 0,
+      amount: 0,
+      unit: 'pcs'
+    }],
+    discount: 0,
+    boxCount: 1,
+    total: 0,
+  };
 };
+
+// ADD THIS DEBUG LINE RIGHT HERE:
+console.log('🏗️ Test createInitialBox:', createInitialBox());
 
 // Define the OrderForm component
 const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) => {
@@ -149,7 +168,11 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder }, ref) =>
   // ===== ALL STATE VARIABLES FIRST =====
   const [extraDiscount, setExtraDiscount] = useState({ value: 0, type: 'value' });
   const [advancePaid, setAdvancePaid] = useState(0);
-  const [boxes, setBoxes] = useState([{ ...initialBox, id: uuidv4() }]);
+  const [boxes, setBoxes] = useState(() => {
+  const initialBox = createInitialBox();
+  console.log('🚀 Creating initial state with box:', initialBox);
+  return [initialBox];
+});
   const [notes, setNotes] = useState('');
   const [message, setMessage] = useState('');
   const [editingOrderId, setEditingOrderId] = useState(null);
@@ -399,81 +422,229 @@ const sendOrderEmail = async (orderData, isModification = false, changes = null)
   }
 };
 
-// Enhanced function to detect changes between original and new order
-const detectOrderChanges = (original, current) => {
-  const changes = [];
+// Add this function to your OrderForm.jsx (after the sendOrderEmail function)
+
+// Function to cleanup auto-saved drafts after successful save
+const cleanupAutoSavedDrafts = async (orderNumber) => {
+  try {
+    console.log('🧹 Cleaning up auto-saved drafts for:', orderNumber);
+    
+    const response = await apiCall(`/orders/cleanup-drafts/${encodeURIComponent(orderNumber)}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('✅ Auto-save cleanup successful:', result);
+      
+      // Update message to show cleanup was performed
+      if (result.deletedCount > 0) {
+        setMessage(prev => prev + ` (Cleaned up ${result.deletedCount} auto-saved drafts)`);
+      }
+    } else {
+      console.warn('⚠️ Auto-save cleanup failed:', response.status);
+    }
+  } catch (error) {
+    console.warn('⚠️ Auto-save cleanup error (non-critical):', error);
+    // Don't throw error as this is a cleanup operation
+  }
+};
+
+const detectDetailedOrderChanges = (original, current) => {
+  const changes = {
+    customer: [],
+    order: [],
+    financial: [],
+    boxes: [] // Will contain box-specific changes
+  };
   
   // Customer information changes
   if (original.customerName !== current.customerName) {
-    changes.push(`Customer name: "${original.customerName}" → "${current.customerName}"`);
+    changes.customer.push(`Customer name: "${original.customerName}" → "${current.customerName}"`);
   }
   
   if (original.phone !== current.phone) {
-    changes.push(`Phone number: ${original.phone} → ${current.phone}`);
+    changes.customer.push(`Phone number: ${original.phone} → ${current.phone}`);
   }
   
   if (original.email !== current.email) {
-    changes.push(`Email: ${original.email || 'None'} → ${current.email || 'None'}`);
+    changes.customer.push(`Email: ${original.email || 'None'} → ${current.email || 'None'}`);
   }
   
   if (original.address !== current.address) {
-    changes.push(`Address: "${original.address || 'None'}" → "${current.address || 'None'}"`);
+    changes.customer.push(`Address: "${original.address || 'None'}" → "${current.address || 'None'}"`);
   }
   
   // Order information changes
   if (original.occasion !== current.occasion) {
-    changes.push(`Occasion: ${original.occasion} → ${current.occasion}`);
+    changes.order.push(`Occasion: ${original.occasion} → ${current.occasion}`);
   }
   
   if (original.orderDate !== current.orderDate) {
-    changes.push(`Order date: ${new Date(original.orderDate).toLocaleDateString()} → ${new Date(current.orderDate).toLocaleDateString()}`);
+    changes.order.push(`Order date: ${new Date(original.orderDate).toLocaleDateString()} → ${new Date(current.orderDate).toLocaleDateString()}`);
   }
   
   if (original.deliveryDate !== current.deliveryDate) {
-    changes.push(`Delivery date: ${new Date(original.deliveryDate).toLocaleDateString()} → ${new Date(current.deliveryDate).toLocaleDateString()}`);
+    changes.order.push(`Delivery date: ${new Date(original.deliveryDate).toLocaleDateString()} → ${new Date(current.deliveryDate).toLocaleDateString()}`);
   }
   
   if (original.deliveryTime !== current.deliveryTime) {
-    changes.push(`Delivery time: ${original.deliveryTime} → ${current.deliveryTime}`);
+    changes.order.push(`Delivery time: ${original.deliveryTime} → ${current.deliveryTime}`);
   }
   
-  // Financial changes
+  // Overall financial changes - FIXED: Return only text strings
   if (Math.abs(original.grandTotal - current.grandTotal) > 0.01) {
-    changes.push(`Total amount: ₹${original.grandTotal.toFixed(2)} → ₹${current.grandTotal.toFixed(2)}`);
+    const isIncrease = current.grandTotal > original.grandTotal;
+    const indicator = isIncrease ? '↗️' : '↘️';
+    changes.financial.push(`${indicator} Total amount: ₹${original.grandTotal.toFixed(2)} → ₹${current.grandTotal.toFixed(2)}`);
   }
   
   if (Math.abs((original.advancePaid || 0) - (current.advancePaid || 0)) > 0.01) {
-    changes.push(`Advance paid: ₹${(original.advancePaid || 0).toFixed(2)} → ₹${(current.advancePaid || 0).toFixed(2)}`);
+    const isIncrease = (current.advancePaid || 0) > (original.advancePaid || 0);
+    const indicator = isIncrease ? '↗️' : '↘️';
+    changes.financial.push(`${indicator} Advance paid: ₹${(original.advancePaid || 0).toFixed(2)} → ₹${(current.advancePaid || 0).toFixed(2)}`);
   }
   
   // Extra discount changes
   const origDiscount = original.extraDiscount?.value || 0;
   const currDiscount = current.extraDiscount?.value || 0;
   if (Math.abs(origDiscount - currDiscount) > 0.01) {
-    changes.push(`Extra discount: ₹${origDiscount.toFixed(2)} → ₹${currDiscount.toFixed(2)}`);
+    const isIncrease = currDiscount > origDiscount;
+    const indicator = isIncrease ? '↗️' : '↘️';
+    changes.financial.push(`${indicator} Extra discount: ₹${origDiscount.toFixed(2)} → ₹${currDiscount.toFixed(2)}`);
   }
   
-  // Items changes - more detailed comparison
-  const originalItems = original.boxes.flatMap((box, boxIndex) => 
-    box.items.map(item => `Box ${boxIndex + 1}: ${item.name} x${item.qty} @ ₹${item.price}`)
-  ).sort();
+  // Helper function to calculate box total
+  const calculateBoxTotal = (box) => {
+    const itemsSubtotal = box.items.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
+    const boxSubtotal = itemsSubtotal * (box.boxCount || 1);
+    const boxDiscount = (box.discount || 0) * (box.boxCount || 1);
+    return boxSubtotal - boxDiscount;
+  };
   
-  const currentItems = current.boxes.flatMap((box, boxIndex) => 
-    box.items.map(item => `Box ${boxIndex + 1}: ${item.name} x${item.qty} @ ₹${item.price}`)
-  ).sort();
+  // Box-specific changes analysis - FIXED: Return formatted text blocks
+  const maxBoxes = Math.max(original.boxes.length, current.boxes.length);
   
-  if (JSON.stringify(originalItems) !== JSON.stringify(currentItems)) {
-    changes.push('Order items, quantities, or prices have been modified');
-  }
-  
-  // Box count changes
-  if (original.boxes.length !== current.boxes.length) {
-    changes.push(`Number of boxes: ${original.boxes.length} → ${current.boxes.length}`);
+  for (let boxIndex = 0; boxIndex < maxBoxes; boxIndex++) {
+    const origBox = original.boxes[boxIndex];
+    const currBox = current.boxes[boxIndex];
+    const boxNumber = boxIndex + 1;
+    
+    let boxChanges = [];
+    
+    if (!origBox && currBox) {
+      // New box added
+      boxChanges.push(`📦 Box ${boxNumber} added`);
+      boxChanges.push(`↗️ Box ${boxNumber} total: ₹0.00 → ₹${calculateBoxTotal(currBox).toFixed(2)}`);
+      
+      // Add all items as new
+      currBox.items.forEach(item => {
+        boxChanges.push(`➕ Added: ${item.name} (${item.qty} × ₹${item.price})`);
+      });
+      
+    } else if (origBox && !currBox) {
+      // Box removed
+      boxChanges.push(`📦 Box ${boxNumber} removed`);
+      boxChanges.push(`↘️ Box ${boxNumber} total: ₹${calculateBoxTotal(origBox).toFixed(2)} → ₹0.00`);
+      
+      // Add all items as removed
+      origBox.items.forEach(item => {
+        boxChanges.push(`➖ Removed: ${item.name} (${item.qty} × ₹${item.price})`);
+      });
+      
+    } else if (origBox && currBox) {
+      // Box exists in both - check for changes
+      
+      // Box count changes
+      if ((origBox.boxCount || 1) !== (currBox.boxCount || 1)) {
+        boxChanges.push(`📦 Box count: ${origBox.boxCount || 1} → ${currBox.boxCount || 1}`);
+      }
+      
+      // Box discount changes
+      if (Math.abs((origBox.discount || 0) - (currBox.discount || 0)) > 0.01) {
+        const origDiscount = (origBox.discount || 0) * (origBox.boxCount || 1);
+        const currDiscount = (currBox.discount || 0) * (currBox.boxCount || 1);
+        const isIncrease = currDiscount > origDiscount;
+        const indicator = isIncrease ? '↗️' : '↘️';
+        boxChanges.push(`${indicator} Box discount: ₹${origDiscount.toFixed(2)} → ₹${currDiscount.toFixed(2)}`);
+      }
+      
+      // Box total changes
+      const origBoxTotal = calculateBoxTotal(origBox);
+      const currBoxTotal = calculateBoxTotal(currBox);
+      if (Math.abs(origBoxTotal - currBoxTotal) > 0.01) {
+        const isIncrease = currBoxTotal > origBoxTotal;
+        const indicator = isIncrease ? '↗️' : '↘️';
+        boxChanges.push(`${indicator} Box subtotal: ₹${origBoxTotal.toFixed(2)} → ₹${currBoxTotal.toFixed(2)}`);
+      }
+      
+      // Item changes within the box
+      const origItems = origBox.items.map(item => ({ 
+        name: item.name, 
+        qty: item.qty, 
+        price: item.price,
+        unit: item.unit 
+      }));
+      const currItems = currBox.items.map(item => ({ 
+        name: item.name, 
+        qty: item.qty, 
+        price: item.price,
+        unit: item.unit 
+      }));
+      
+      // Find added items
+      currItems.forEach(currItem => {
+        const origItem = origItems.find(item => item.name === currItem.name);
+        if (!origItem) {
+          boxChanges.push(`➕ Added: ${currItem.name} (${currItem.qty} × ₹${currItem.price})`);
+        }
+      });
+      
+      // Find removed items
+      origItems.forEach(origItem => {
+        const currItem = currItems.find(item => item.name === origItem.name);
+        if (!currItem) {
+          boxChanges.push(`➖ Removed: ${origItem.name} (${origItem.qty} × ₹${origItem.price})`);
+        }
+      });
+      
+      // Find modified items
+      origItems.forEach(origItem => {
+        const currItem = currItems.find(item => item.name === origItem.name);
+        if (currItem) {
+          const itemChanges = [];
+          
+          if (origItem.qty !== currItem.qty) {
+            itemChanges.push(`quantity: ${origItem.qty} → ${currItem.qty}`);
+          }
+          
+          if (Math.abs(origItem.price - currItem.price) > 0.01) {
+            itemChanges.push(`price: ₹${origItem.price} → ₹${currItem.price}`);
+          }
+          
+          if ((origItem.unit || 'pcs') !== (currItem.unit || 'pcs')) {
+            itemChanges.push(`unit: ${origItem.unit || 'pcs'} → ${currItem.unit || 'pcs'}`);
+          }
+          
+          if (itemChanges.length > 0) {
+            boxChanges.push(`🔄 ${origItem.name}: ${itemChanges.join(', ')}`);
+          }
+        }
+      });
+    }
+    
+    // Only add box changes if there are actual changes
+    if (boxChanges.length > 0) {
+      // Add each change as a separate item for better email formatting
+      boxChanges.forEach(change => {
+        changes.boxes.push(`Box ${boxNumber}: ${change}`);
+      });
+    }
   }
   
   // Notes changes
   if ((original.notes || '') !== (current.notes || '')) {
-    changes.push(`Notes: "${original.notes || 'None'}" → "${current.notes || 'None'}"`);
+    changes.order.push(`Notes: "${original.notes || 'None'}" → "${current.notes || 'None'}"`);
   }
   
   return changes;
@@ -630,7 +801,7 @@ const generateUniqueOrderNumber = async () => {
         deliveryTime: '10:00'
       });
 
-      setBoxes([{ ...initialBox, id: uuidv4() }]);
+      setBoxes([createInitialBox()]);
       setNotes('');
       setExtraDiscount({ value: 0, type: 'value' });
       setAdvancePaid(0);
@@ -767,23 +938,113 @@ const handleOrderChange = (e) => {
   }
 };
 
-  const handleItemChange = (boxId, itemId, field, value) => {
-    const updatedBoxes = boxes.map((box) => {
-      if (box.id !== boxId) return box;
+const handleItemChange = (boxId, itemId, field, value) => {
+  console.log('🔄 handleItemChange called:', { boxId, itemId, field, value });
+  
+  // Add this validation
+  if (!boxId || !itemId) {
+    console.error('🚨 MISSING IDs:', { boxId, itemId });
+    return;
+  }
+  
+  setBoxes(prevBoxes => {
+    console.log('📦 Current boxes before update:', prevBoxes.map(b => ({ 
+      id: b.id, 
+      itemCount: b.items.length,
+      itemIds: b.items.map(i => i.id)
+    })));
+    
+    const result = prevBoxes.map((box) => {
+      // Only update the target box
+      if (box.id !== boxId) {
+        console.log('⏭️ Skipping box:', box.id);
+        return box; // Return unchanged box
+      }
+      
+      console.log('📦 Updating target box:', boxId);
+      
+      // Update only the target item in this box
       const updatedItems = box.items.map((item) => {
-        if (item.id !== itemId) return item;
-        const updatedItem = { ...item, [field]: field === 'qty' ? Number(value) : value };
-        
-        if (field === 'qty' || field === 'price') {
-          updatedItem.amount = updatedItem.qty * updatedItem.price;
+        // Only update the target item
+        if (item.id !== itemId) {
+          console.log('⏭️ Keeping item unchanged:', { id: item.id, name: item.name, qty: item.qty });
+          return item; // Return unchanged item
         }
+        
+        console.log('🔧 Updating target item:', { id: item.id, name: item.name, field, oldValue: item[field], newValue: value });
+        
+        // Create a completely new item object to avoid mutation
+        const updatedItem = {
+          ...item, // Spread all existing properties
+          [field]: field === 'qty' ? (parseInt(value) || 1) : value // Update only the target field
+        };
+        
+        // Recalculate amount when qty or price changes
+        if (field === 'qty' || field === 'price') {
+          updatedItem.amount = (updatedItem.qty || 1) * (updatedItem.price || 0);
+          console.log('💰 Recalculated amount for item:', updatedItem.name, 'amount:', updatedItem.amount);
+        }
+        
+        console.log('✅ Final updated item:', { 
+          id: updatedItem.id, 
+          name: updatedItem.name, 
+          qty: updatedItem.qty, 
+          price: updatedItem.price,
+          amount: updatedItem.amount 
+        });
         
         return updatedItem;
       });
-      return { ...box, items: updatedItems };
+      
+      console.log('📋 Updated items for box:', boxId, updatedItems.map(i => ({ 
+        id: i.id, 
+        name: i.name, 
+        qty: i.qty,
+        amount: i.amount 
+      })));
+      
+      // Return new box object with updated items
+      return {
+        ...box,
+        items: updatedItems
+      };
     });
-    setBoxes(updatedBoxes);
+    
+    console.log('📦 Boxes after update:', result.map(b => ({ 
+      id: b.id, 
+      itemCount: b.items.length,
+      itemIds: b.items.map(i => i.id)
+    })));
+    
+    return result;
+  });
+};
+
+const addItem = (boxId) => {
+  console.log('➕ Adding item to box:', boxId);
+  
+  const newItem = {
+    id: uuidv4(), // Ensure this is actually generating UUIDs
+    name: '',
+    qty: 1,
+    price: 0,
+    amount: 0,
+    unit: 'pcs'
   };
+  
+  console.log('🆕 New item created:', newItem);
+  
+  setBoxes(prevBoxes => 
+    prevBoxes.map(box =>
+      box.id === boxId
+        ? { 
+            ...box, 
+            items: [...box.items, newItem]
+          }
+        : box
+    )
+  );
+};
   
   const handleCustomItemInput = (boxId, itemId, value) => {
     if (value.trim() === '') return;
@@ -830,14 +1091,21 @@ const handleOrderChange = (e) => {
   };
 
   const handleBoxCountChange = (boxId, count) => {
-    const updatedBoxes = boxes.map((box) => {
+  const newCount = Number(count) || 1;
+  
+  setBoxes(prevBoxes => 
+    prevBoxes.map((box) => {
       if (box.id === boxId) {
-        return { ...box, boxCount: Number(count) || 1 };
+        console.log('📦 Changing box count for box:', boxId, 'from', box.boxCount, 'to', newCount);
+        return { 
+          ...box, 
+          boxCount: newCount 
+        };
       }
       return box;
-    });
-    setBoxes(updatedBoxes);
-  };
+    })
+  );
+};
   
   const handleBoxDiscountChange = (boxId, newDiscount) => {
     setBoxes(prev =>
@@ -863,19 +1131,11 @@ const handleOrderChange = (e) => {
   };
 
   const addBox = () => {
-    setBoxes([...boxes, { ...initialBox, id: uuidv4() }]);
-  };
+  setBoxes([...boxes, createInitialBox()]);
+};
   
   const removeBox = (boxId) => {
     setBoxes(boxes.filter(box => box.id !== boxId));
-  };
-
-  const addItem = (boxId) => {
-    setBoxes(boxes.map(box =>
-      box.id === boxId
-        ? { ...box, items: [...box.items, { ...initialItem, id: uuidv4() }] }
-        : box
-    ));
   };
   
   const removeItem = (boxId, itemId) => {
@@ -933,7 +1193,6 @@ const handleOrderChange = (e) => {
   // ===== DRAFT HANDLING LOGIC =====
   let existingDraftId = null;
   
-  // ✅ FIXED: Only check for drafts if we're NOT editing an existing order
   if (!editingOrderId && status === 'saved') {
     try {
       console.log('🔍 Checking for existing draft:', fullOrderNumber);
@@ -963,10 +1222,9 @@ const handleOrderChange = (e) => {
     orderNumber: fullOrderNumber,
     branch: (() => {
       if (currentUser.role === 'admin') {
-        // For admin, use the branch from the order prefix
         const prefixBranch = orderInfo.orderPrefix.split('-')[0];
         const branchName = Object.keys(branches).find(name => branches[name] === prefixBranch);
-        return branchName || 'Beadon Street'; // Default to BD for admin
+        return branchName || 'Beadon Street';
       } else {
         return currentUser.branch;
       }
@@ -1006,7 +1264,6 @@ const handleOrderChange = (e) => {
     // ===== CHECK FOR CHANGES (EDIT MODE) =====
     if (editingOrderId) {
       console.log('📝 Edit mode detected - skipping duplicate check');
-      // In edit mode, we don't need to check for duplicates
     } else {
       // ===== CHECK ORDER NUMBER UNIQUENESS (NEW ORDERS ONLY) =====
       if (!existingDraftId) {
@@ -1033,16 +1290,13 @@ const handleOrderChange = (e) => {
 
     const branchCodeForAPI = orderData.branchCode.toLowerCase();
     
-    // ✅ FIXED: Use PUT for existing orders, POST for new orders
     let saveResponse;
     if (editingOrderId) {
-      // Use PUT for updating existing orders
       saveResponse = await apiCall(`/orders/${branchCodeForAPI}/${editingOrderId}`, {
         method: 'PUT',
         body: JSON.stringify(orderData)
       });
     } else {
-      // Use POST for new orders (including draft conversions)
       saveResponse = await apiCall(`/orders/${branchCodeForAPI}`, {
         method: 'POST',
         body: JSON.stringify(orderData)
@@ -1057,18 +1311,34 @@ const handleOrderChange = (e) => {
     const savedOrderResult = await saveResponse.json();
     console.log('✅ Order saved successfully:', savedOrderResult);
 
-    // ===== SUCCESS HANDLING =====
+    // ===== SUCCESS HANDLING WITH CLEANUP =====
     setMessage(`✅ Order ${status === 'held' ? 'held' : 'saved'} successfully!`);
     setLastSavedTime(new Date().toLocaleTimeString());
+
+    // ===== CLEANUP AUTO-SAVED DRAFTS =====
+    if (status === 'saved' || status === 'held') {
+      // Cleanup auto-saved drafts for this order number (runs in background)
+      cleanupAutoSavedDrafts(fullOrderNumber);
+    }
 
     // ===== EMAIL HANDLING =====
     try {
       if (editingOrderId && selectedOrder) {
-        const changes = detectOrderChanges(selectedOrder, orderData);
-        if (changes.length > 0) {
-          await sendOrderEmail(orderData, true, changes);
+        // This is an order modification - use detailed change detection
+        const detailedChanges = detectDetailedOrderChanges(selectedOrder, orderData);
+        
+        // Check if there are any changes at all
+        const hasChanges = detailedChanges.customer?.length || 
+                          detailedChanges.order?.length || 
+                          detailedChanges.financial?.length || 
+                          detailedChanges.items?.length || 
+                          detailedChanges.boxes?.length;
+        
+        if (hasChanges) {
+          await sendOrderEmail(orderData, true, detailedChanges);
         }
       } else {
+        // This is a new order
         await sendOrderEmail(orderData, false);
       }
     } catch (emailError) {
@@ -1474,7 +1744,19 @@ useEffect(() => {
       deliveryTime: selectedOrder.deliveryTime || ''
     });
 
-    setBoxes(selectedOrder.boxes || []);
+    // ✅ FIXED: Ensure boxes and items have IDs
+    const boxesWithIds = (selectedOrder.boxes || []).map(box => ({
+      ...box,
+      id: box.id || uuidv4(), // Ensure box has ID
+      items: (box.items || []).map(item => ({
+        ...item,
+        id: item.id || uuidv4() // Ensure item has ID
+      }))
+    }));
+    
+    console.log('🔧 Fixed boxes with IDs:', boxesWithIds);
+    setBoxes(boxesWithIds);
+    
     setExtraDiscount(selectedOrder.extraDiscount || { value: 0, type: 'value' });
     setAdvancePaid(selectedOrder.advancePaid || 0);
     setNotes(selectedOrder.notes || '');
@@ -1482,12 +1764,7 @@ useEffect(() => {
     setEditOrderNumber(false);
     setEditingOrderId(selectedOrder._id);
     
-    console.log('✅ Order loaded for editing:', {
-      orderId: selectedOrder._id,
-      orderNumber: selectedOrder.orderNumber,
-      extractedPrefix,
-      extractedNumber
-    });
+    console.log('✅ Order loaded for editing with fixed IDs');
   }
 }, [selectedOrder, currentUser.branch]);
 
@@ -1587,10 +1864,28 @@ useEffect(() => {
     };
   }, [hasFormData]);
 
+  // Add ID validation useEffect - ADD THIS AFTER LINE 1147
+useEffect(() => {
+  // Validate all IDs exist
+  boxes.forEach((box, boxIndex) => {
+    if (!box.id) {
+      console.error(`🚨 Box ${boxIndex} missing ID`);
+    }
+    box.items.forEach((item, itemIndex) => {
+      if (!item.id) {
+        console.error(`🚨 Item ${itemIndex} in box ${boxIndex} missing ID`);
+      }
+    });
+  });
+}, [boxes]);
+
   // IMPROVED AUTO-SAVE WITH DRAFT MANAGEMENT - Replace the entire auto-save useEffect
+// Replace your auto-save useEffect in OrderForm.jsx with this improved version:
+
 useEffect(() => {
   let isMounted = true;
   let autoSaveTimer;
+  let lastAutoSaveData = null; // Track last auto-saved data to prevent duplicates
   
   const performAutoSave = async () => {
     if (!isMounted) return;
@@ -1616,22 +1911,13 @@ useEffect(() => {
     try {
       const draftOrderNumber = `${orderInfo.orderPrefix}-${orderInfo.orderNumber}`;
       
-      // Check if a draft already exists for this order number
-      const checkResponse = await apiCall(`/orders/check-draft?orderNumber=${encodeURIComponent(draftOrderNumber)}`);
-      
-      let existingDraftId = null;
-      if (checkResponse.ok) {
-        const checkData = await checkResponse.json();
-        existingDraftId = checkData.draftId;
-      }
-      
-      // ✅ FIXED: Determine branch correctly for auto-save
+      // Determine branch correctly for auto-save
       const determineBranch = () => {
         if (currentUser.role === 'admin') {
           // For admin, use the branch from the order prefix
           const prefixBranch = orderInfo.orderPrefix.split('-')[0];
           const branchName = Object.keys(branches).find(name => branches[name] === prefixBranch);
-          return branchName || 'Misti Hub';
+          return branchName || 'Beadon Street';
         } else {
           return currentUser.branch;
         }
@@ -1672,12 +1958,40 @@ useEffect(() => {
         isDraft: true // Mark as draft
       };
       
-      if (existingDraftId) {
-        // Update existing draft
-        autoSaveData._id = existingDraftId;
+      // ✅ PREVENT DUPLICATE AUTO-SAVES
+      // Create a hash of the important data to compare
+      const dataHash = JSON.stringify({
+        customer: customer,
+        boxes: boxes,
+        notes: notes,
+        extraDiscount: extraDiscount,
+        advancePaid: advancePaid,
+        orderInfo: orderInfo
+      });
+      
+      // Skip if data hasn't changed since last auto-save
+      if (lastAutoSaveData === dataHash) {
+        console.log('🚫 Auto-save skipped - no changes since last save');
+        return;
       }
       
-      // ✅ FIXED: Use correct branch code for API call
+      // ✅ CHECK FOR EXISTING DRAFT BEFORE CREATING NEW ONE
+      const checkResponse = await apiCall(`/orders/check-draft?orderNumber=${encodeURIComponent(draftOrderNumber)}`);
+      
+      let existingDraftId = null;
+      if (checkResponse.ok) {
+        const checkData = await checkResponse.json();
+        existingDraftId = checkData.draftId;
+      }
+      
+      if (existingDraftId) {
+        // Update existing draft instead of creating new one
+        autoSaveData._id = existingDraftId;
+        console.log('💾 Auto-save: Updating existing draft', existingDraftId);
+      } else {
+        console.log('💾 Auto-save: Creating new draft');
+      }
+      
       const branchCodeForAPI = autoSaveData.branchCode.toLowerCase();
       const saveResponse = await apiCall(`/orders/${branchCodeForAPI}`, {
         method: 'POST',
@@ -1685,15 +1999,13 @@ useEffect(() => {
       });
       
       if (saveResponse.ok) {
-        if (existingDraftId) {
-          console.log('💾 Auto-save: Updated existing draft', existingDraftId);
-        } else {
-          console.log('💾 Auto-save: Created new draft');
-        }
+        lastAutoSaveData = dataHash; // Update last saved data hash
         
         if (isMounted) {
           setLastSavedTime(new Date().toLocaleTimeString());
         }
+        
+        console.log('✅ Auto-save successful:', existingDraftId ? 'Updated existing draft' : 'Created new draft');
       } else {
         console.log('❌ Auto-save failed with status:', saveResponse.status);
       }
@@ -1703,9 +2015,9 @@ useEffect(() => {
     }
   };
   
-  // Set up auto-save timer (every 60 seconds)
+  // Set up auto-save timer (every 45 seconds - reduced frequency)
   if (isMounted) {
-    autoSaveTimer = setInterval(performAutoSave, 60000);
+    autoSaveTimer = setInterval(performAutoSave, 45000);
   }
   
   return () => {
@@ -1714,7 +2026,24 @@ useEffect(() => {
       clearInterval(autoSaveTimer);
     }
   };
-}, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, branchPrefixes, editingOrderId, isCheckingOrderNumber]);
+}, [customer, orderInfo, boxes, notes, extraDiscount, advancePaid, currentUser, selectedBranch, branches, editingOrderId, isCheckingOrderNumber]);
+
+// ✅ ALSO ADD A CLEANUP ON COMPONENT UNMOUNT
+useEffect(() => {
+  return () => {
+    // Optional: Cleanup old auto-saved drafts when component unmounts
+    const cleanupOldDrafts = async () => {
+      try {
+        await apiCall('/orders/cleanup-old-drafts', { method: 'DELETE' });
+      } catch (error) {
+        console.log('Auto-cleanup of old drafts failed:', error);
+      }
+    };
+    
+    // Run cleanup in background
+    cleanupOldDrafts();
+  };
+}, []);
 
   // Update document title
   useEffect(() => {
@@ -1727,6 +2056,12 @@ useEffect(() => {
   const balance = grandTotal - advancePaid;
   const hasAdvance = advancePaid > 0;
   const hasDiscount = extraDiscount.value > 0;
+  
+  // ADD THIS RIGHT BEFORE THE RETURN STATEMENT
+console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
+  boxId: box.id,
+  itemsWithIds: box.items.map(item => ({ id: item.id, name: item.name }))
+})));
 
   // ===== RENDER =====
   return (
@@ -1751,7 +2086,7 @@ useEffect(() => {
         <div className="summary-header">
           <h4 style={{ margin: 0 }}>
             Order Summary 
-            <span className="summary-badge">{totalBoxCount} boxes</span>
+            <span className="summary-badge">{boxes.length} types, {totalBoxCount} total</span>
           </h4>
           <div style={{ display: 'flex', gap: '5px' }}>
             <button 
@@ -2099,233 +2434,230 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Order Items & Boxes */}
-      {boxes.map((box, boxIndex) => (
-        <div className="card" key={box.id}>
-          <h3>Box #{boxIndex + 1}</h3>
-          
-          <div className="form-group" style={{ marginBottom: '15px' }}>
-            <label>Number of Boxes:</label>
-            <input
-              type="number"
-              min="1"
-              value={box.boxCount || 1}
-              onChange={(e) => handleBoxCountChange(box.id, e.target.value)}
-              style={{ width: '80px' }}
-            />
-          </div>
-          
-          {/* Item Rows */}
-          <div className="item-header">
-            <div style={{ flex: 2 }}>Item</div>
-            <div style={{ flex: 1, width: '60px' }}>Qty</div>
-            <div style={{ flex: 1 }}>Price (₹)</div>
-            <div style={{ flex: 1 }}>Unit</div>
-            <div style={{ flex: 1 }}>Amount (₹)</div>
-            <div style={{ width: '40px' }}></div>
-          </div>
-          
-          {validationErrors.items && (
-            <div className="error-message" style={{ marginBottom: '10px' }}>{validationErrors.items}</div>
-          )}
-          
-          {box.items.map((item) => (
-            <div className="item-row" key={item.id} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
-              {!item.name || item.name !== '__custom__' ? (
-                // Regular item dropdown
-                // Fix 2: Also update the item dropdown rendering to ensure it stays sorted:
-// In your item dropdown section, replace with:
-<select
-  value={item.name || ""}
+{/* Order Items & Boxes */}
+{/* Order Items & Boxes */}
+{boxes.map((box, boxIndex) => (
+  <div className="card" key={box.id}>
+    <h2>Box #{boxIndex + 1} Items</h2>
+    {box.items.map((item, itemIndex) => (
+      <div 
+        className="item-row" 
+        key={item.id || `fallback-${box.id || 'no-box'}-${itemIndex}`}
+        style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}
+      >
+        {/* Item Name Dropdown/Input */}
+        {!item.name || item.name !== '__custom__' ? (
+          <select
+            value={item.name || ""}
+            onChange={(e) => {
+              const selectedValue = e.target.value;
+              const updatedBoxes = boxes.map(b => {
+                if (b.id !== box.id) return b;
+                const updatedItems = b.items.map(i => {
+                  if (i.id !== item.id) return i;
+                  if (selectedValue === "__custom__") {
+                    return { ...i, name: "__custom__", customName: false };
+                  } else if (selectedValue) {
+                    const selected = itemList.find(listItem => listItem.name === selectedValue);
+                    if (selected) {
+                      return {
+                        ...i,
+                        name: selected.name,
+                        price: selected.price,
+                        unit: selected.unit || 'pcs',
+                        amount: i.qty * selected.price,
+                        customName: false
+                      };
+                    }
+                  }
+                  return { ...i, name: selectedValue, customName: false };
+                });
+                return { ...b, items: updatedItems };
+              });
+              setBoxes(updatedBoxes);
+            }}
+            style={{ flex: 2 }}
+            className={(!item.name || (item.name === "__custom__" && !item.customName)) ? 'error-field' : ''}
+          >
+            <option value="">Select Item</option>
+            {itemList
+              .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()))
+              .map((i, index) => (
+                <option key={`item-${i.name}-${index}`} value={i.name}>
+                  {i.name}
+                </option>
+              ))
+            }
+            <option value="__custom__">+ Custom Item</option>
+          </select>
+        ) : (
+          <input
+            type="text"
+            placeholder="Enter custom item name"
+            value={item.name === '__custom__' ? '' : item.name || ''}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              const updatedBoxes = boxes.map(b => {
+                if (b.id !== box.id) return b;
+                const updatedItems = b.items.map(i => {
+                  if (i.id !== item.id) return i;
+                  return { ...i, name: newValue, customName: newValue.length > 0 };
+                });
+                return { ...b, items: updatedItems };
+              });
+              setBoxes(updatedBoxes);
+            }}
+            style={{ flex: 2 }}
+            className={(!item.customName || !item.name) ? 'error-field' : ''}
+            autoFocus
+          />
+        )}
+        {/* Quantity Input */}
+        <input
+  type="number"
+  placeholder="Qty"
+  min="1"
+  value={item.qty || 1}
   onChange={(e) => {
-    const selectedValue = e.target.value;
+    const newValue = parseInt(e.target.value) || 1;
     
-    const updatedBoxes = boxes.map(b => {
-      if (b.id !== box.id) return b;
-      const updatedItems = b.items.map(i => {
-        if (i.id !== item.id) return i;
-        
-        if (selectedValue === "__custom__") {
-          return {
-            ...i,
-            name: "__custom__",
-            customName: false
-          };
-        } else if (selectedValue) {
-          const selected = itemList.find(listItem => listItem.name === selectedValue);
-          if (selected) {
-            return {
-              ...i,
-              name: selected.name,
-              price: selected.price,
-              unit: selected.unit || 'pcs',
-              amount: i.qty * selected.price,
-              customName: false
-            };
-          }
-        }
-        
-        return {
-          ...i,
-          name: selectedValue,
-          customName: false
-        };
-      });
-      return { ...b, items: updatedItems };
-    });
+    // ✅ FORCE ID CREATION IF MISSING
+    let safeBoxId = box.id;
+    let safeItemId = item.id;
     
-    setBoxes(updatedBoxes);
+    if (!safeBoxId) {
+      safeBoxId = uuidv4();
+      console.log('🔧 Fixed missing box ID:', safeBoxId);
+    }
+    
+    if (!safeItemId) {
+      safeItemId = uuidv4();
+      console.log('🔧 Fixed missing item ID:', safeItemId);
+      
+      // Update the item with the new ID
+      setBoxes(prevBoxes => 
+        prevBoxes.map(b => 
+          b.id === (box.id || safeBoxId) 
+            ? {
+                ...b,
+                id: safeBoxId,
+                items: b.items.map(i => 
+                  i === item 
+                    ? { ...i, id: safeItemId }
+                    : i
+                )
+              }
+            : b
+        )
+      );
+      
+      // Now call handleItemChange with the safe IDs
+      setTimeout(() => handleItemChange(safeBoxId, safeItemId, 'qty', newValue), 0);
+      return;
+    }
+    
+    handleItemChange(safeBoxId, safeItemId, 'qty', newValue);
   }}
-  style={{ flex: 2 }}
-  className={(!item.name || (item.name === "__custom__" && !item.customName)) ? 'error-field' : ''}
->
-  <option value="">Select Item</option>
-  {/* ✅ FIXED: Items are already sorted, but ensure they stay sorted in display */}
-  {itemList
-    .sort((a, b) => (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()))
-    .map((i, index) => (
-      <option key={`item-${i.name}-${index}`} value={i.name}>
-        {i.name}
-      </option>
-    ))
-  }
-  <option value="__custom__">+ Custom Item</option>
-</select>
-) : (
-  // ✅ FIXED: Custom item input field
+  style={{ flex: 1, width: '60px' }}
+  key={`qty-${box.id}-${item.id}`}
+/>
+        {/* Price Input */}
+        {item.name === '__custom__' ? (
+          <input
+            type="number"
+            placeholder="Price"
+            value={item.price || 0}
+            onChange={(e) => handleItemPriceChange(box.id, item.id, e.target.value)}
+            style={{ flex: 1 }}
+          />
+        ) : (
+          <input
+            type="number"
+            placeholder="Price"
+            value={item.price || 0}
+            style={{ flex: 1, backgroundColor: '#f0f0f0' }}
+            readOnly
+          />
+        )}
+        {/* Unit */}
+        {item.name === '__custom__' ? (
+          <select 
+            value={item.unit || 'pcs'}
+            onChange={(e) => {
+              const updatedBoxes = boxes.map(b => {
+                if (b.id !== box.id) return b;
+                const updatedItems = b.items.map(i => {
+                  if (i.id !== item.id) return i;
+                  return { ...i, unit: e.target.value };
+                });
+                return { ...b, items: updatedItems };
+              });
+              setBoxes(updatedBoxes);
+            }}
+            style={{ flex: 1 }}
+          >
+            <option value="pcs">pcs</option>
+            <option value="kg">kg</option>
+            <option value="g">g</option>
+            <option value="dozen">dozen</option>
+            <option value="box">box</option>
+            <option value="pack">pack</option>
+          </select>
+        ) : (
+          <div style={{ flex: 1 }}>{item.unit || 'pcs'}</div>
+        )}
+        {/* Amount */}
+        <div style={{ flex: 1 }}>₹{item.amount || 0}</div>
+        {/* Remove Button */}
+        <button 
+          onClick={() => removeItem(box.id, item.id)} 
+          className="remove-btn"
+          disabled={box.items.length <= 1}
+        >
+          ❌
+        </button>
+      </div>
+    ))}
+    <button onClick={() => addItem(box.id)}>+ Add Item</button>
+    {/* Box Summary */}
+    <div className="box-summary" style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f7f7f7', borderRadius: '5px' }}>
+      <p>Subtotal: ₹{box.items.reduce((sum, i) => sum + (i.amount || 0), 0)}</p>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+  <label>Box Count: </label>
   <input
-    type="text"
-    placeholder="Enter custom item name"
-    value={item.name === '__custom__' ? '' : item.name || ''}
-    onChange={(e) => {
-      const newValue = e.target.value;
-      
-      const updatedBoxes = boxes.map(b => {
-        if (b.id !== box.id) return b;
-        
-        const updatedItems = b.items.map(i => {
-          if (i.id !== item.id) return i;
-          
-          return {
-            ...i,
-            name: newValue,
-            customName: newValue.length > 0
-          };
-        });
-        
-        return { ...b, items: updatedItems };
-      });
-      
-      setBoxes(updatedBoxes);
-    }}
-    style={{ flex: 2 }}
-    className={(!item.customName || !item.name) ? 'error-field' : ''}
-    autoFocus
+    type="number"
+    min="1"
+    value={box.boxCount || 1}
+    onChange={(e) => handleBoxCountChange(box.id, e.target.value)}
+    style={{ width: '80px' }}
   />
-)}
-              
-              <input
-                type="number"
-                placeholder="Qty"
-                min="1"
-                value={item.qty}
-                onChange={(e) => handleItemChange(box.id, item.id, 'qty', e.target.value)}
-                style={{ flex: 1, width: '60px' }}
-              />
-              
-              {item.name === '__custom__' ? (
-                // Editable price for custom items
-                <input
-                  type="number"
-                  placeholder="Price"
-                  value={item.price || 0}
-                  onChange={(e) => handleItemPriceChange(box.id, item.id, e.target.value)}
-                  style={{ flex: 1 }}
-                />
-              ) : (
-                // Read-only price for predefined items
-                <input
-                  type="number"
-                  placeholder="Price"
-                  value={item.price || 0}
-                  style={{ flex: 1, backgroundColor: '#f0f0f0' }}
-                  readOnly
-                />
-              )}
-              
-              {item.name === '__custom__' ? (
-                // Unit dropdown for custom items
-                <select 
-                  value={item.unit || 'pcs'}
-                  onChange={(e) => {
-                    const updatedBoxes = boxes.map(b => {
-                      if (b.id !== box.id) return b;
-                      const updatedItems = b.items.map(i => {
-                        if (i.id !== item.id) return i;
-                        return { ...i, unit: e.target.value };
-                      });
-                      return { ...b, items: updatedItems };
-                    });
-                    setBoxes(updatedBoxes);
-                  }}
-                  style={{ flex: 1 }}
-                >
-                  <option value="pcs">pcs</option>
-                  <option value="kg">kg</option>
-                  <option value="g">g</option>
-                  <option value="dozen">dozen</option>
-                  <option value="box">box</option>
-                  <option value="pack">pack</option>
-                </select>
-              ) : (
-                // Read-only unit for predefined items
-                <div style={{ flex: 1 }}>{item.unit || 'pcs'}</div>
-              )}
-              
-              <div style={{ flex: 1 }}>₹{item.amount || 0}</div>
-              
-              <button 
-  onClick={() => removeItem(box.id, item.id)} 
-  className="remove-btn"
-  disabled={box.items.length <= 1}
->
-  ❌
-</button>
-            </div>
-          ))}
-          
-          <button onClick={() => addItem(box.id)}>+ Add Item</button>
-          
-          {/* Box Summary */}
-          <div className="box-summary" style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f7f7f7', borderRadius: '5px' }}>
-            <p>Subtotal: ₹{box.items.reduce((sum, i) => sum + (i.amount || 0), 0)}</p>
-            <p>Box Count: {box.boxCount || 1}</p>
-            <p>Box Subtotal: ₹{box.items.reduce((sum, i) => sum + (i.amount || 0), 0) * (box.boxCount || 1)}</p>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              {box.discount > 0 && (
-                <div style={{ margin: '4px 0', fontWeight: 'bold', color: '#444' }}>
-                  Box Discount: ₹{(box.discount * box.boxCount).toFixed(2)}
-                </div>
-              )}
-              <label>Discount: </label>
-              <input
-                type="number"
-                value={box.discount}
-                onChange={(e) => handleBoxDiscountChange(box.id, Number(e.target.value))}
-                style={{ width: '100px' }}
-              />
-            </div>
-            <div><strong>Total: ₹{(calculateBoxTotal(box)).toLocaleString()}</strong></div>
-            <button 
-              onClick={() => removeBox(box.id)} 
-              style={{ backgroundColor: '#ea5454' }}
-              disabled={boxes.length <= 1}
-            >🗑 Remove Box</button>
+  <span>boxes</span>
+</div>
+      <p>Box Subtotal: ₹{box.items.reduce((sum, i) => sum + (i.amount || 0), 0) * (box.boxCount || 1)}</p>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        {box.discount > 0 && (
+          <div style={{ margin: '4px 0', fontWeight: 'bold', color: '#444' }}>
+            Box Discount: ₹{(box.discount * box.boxCount).toFixed(2)}
           </div>
-        </div>
-      ))}
-      
-      <button onClick={addBox} style={{ margin: '10px 0' }}>+ Add Box</button>
+        )}
+        <label>Discount: </label>
+        <input
+          type="number"
+          value={box.discount}
+          onChange={(e) => handleBoxDiscountChange(box.id, Number(e.target.value))}
+          style={{ width: '100px' }}
+        />
+      </div>
+      <div><strong>Total: ₹{(calculateBoxTotal(box)).toLocaleString()}</strong></div>
+      <button 
+        onClick={() => removeBox(box.id)} 
+        style={{ backgroundColor: '#ea5454' }}
+        disabled={boxes.length <= 1}
+      >🗑 Remove Box</button>
+    </div>
+  </div>
+))}
+<button onClick={addBox} style={{ margin: '10px 0' }}>+ Add Box</button>
 
       {/* Order Summary */}
       <div className="card">
@@ -2456,8 +2788,13 @@ useEffect(() => {
           <div>
             {/* Box count summary - only shown if there are multiple boxes */}
             {hasMultipleBoxes && (
-              <p><strong>Total Boxes: </strong>{totalBoxCount}</p>
-            )}
+  <div style={{ marginBottom: '10px' }}>
+    <p><strong>Distinct Box Types: </strong>{boxes.length}</p>
+    <p><strong>Total Boxes: </strong>
+      {boxes.map((box, index) => `Box ${index + 1}: ${box.boxCount || 1}`).join(' + ')} = {totalBoxCount}
+    </p>
+  </div>
+)}
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button 

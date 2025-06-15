@@ -44,12 +44,52 @@ router.get('/check-draft', auth, async (req, res) => {
   }
 });
 
-// @route   DELETE /api/orders/cleanup-drafts
-// @desc    Clean up old auto-saved drafts
-// @access  Private (Admin)
-router.delete('/cleanup-drafts', auth, adminOnly, async (req, res) => {
+// @route   DELETE /api/orders/cleanup-drafts/:orderNumber
+// @desc    Clean up auto-saved drafts for specific order number
+// @access  Private
+router.delete('/cleanup-drafts/:orderNumber', auth, async (req, res) => {
   try {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const { orderNumber } = req.params;
+    console.log('🧹 Cleaning up auto-saved drafts for order:', orderNumber);
+    
+    // Extract branch code from order number
+    const branchCode = orderNumber.split('-')[0].toLowerCase();
+    const OrderModel = getOrderModel(branchCode);
+    
+    // Delete all auto-saved drafts for this order number
+    const deleteResult = await OrderModel.deleteMany({
+      orderNumber: orderNumber,
+      status: 'auto-saved',
+      isDraft: true
+    });
+    
+    console.log('✅ Deleted auto-saved drafts:', deleteResult.deletedCount);
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${deleteResult.deletedCount} auto-saved drafts`,
+      deletedCount: deleteResult.deletedCount
+    });
+    
+  } catch (error) {
+    console.error('❌ Error cleaning up drafts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup auto-saved drafts',
+      error: error.message
+    });
+  }
+});
+
+// @route   DELETE /api/orders/cleanup-old-drafts
+// @desc    Clean up old auto-saved drafts (older than 7 days)
+// @access  Private (Admin)
+router.delete('/cleanup-old-drafts', auth, adminOnly, async (req, res) => {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    console.log('🧹 Cleaning up auto-saved drafts older than:', sevenDaysAgo);
     
     // Get all branch codes
     const branchesCollection = mongoose.connection.db.collection('branches');
@@ -61,9 +101,9 @@ router.delete('/cleanup-drafts', auth, adminOnly, async (req, res) => {
       try {
         const OrderModel = getOrderModel(branch.branchCode.toLowerCase());
         const result = await OrderModel.deleteMany({
-          isDraft: true,
           status: 'auto-saved',
-          updatedAt: { $lt: oneDayAgo }
+          isDraft: true,
+          createdAt: { $lt: sevenDaysAgo }
         });
         totalDeleted += result.deletedCount;
       } catch (error) {
@@ -71,11 +111,21 @@ router.delete('/cleanup-drafts', auth, adminOnly, async (req, res) => {
       }
     }
     
-    console.log('🧹 Cleaned up old drafts:', totalDeleted);
-    res.json({ deletedCount: totalDeleted });
+    console.log('✅ Deleted old auto-saved drafts:', totalDeleted);
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${totalDeleted} old auto-saved drafts`,
+      deletedCount: totalDeleted
+    });
+    
   } catch (error) {
-    console.error('❌ Error cleaning drafts:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error cleaning up old drafts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup old auto-saved drafts',
+      error: error.message
+    });
   }
 });
 

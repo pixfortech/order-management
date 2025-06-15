@@ -12,7 +12,6 @@ const brandRoutes = require('./routes/brandRoutes');
 const itemsRoutes = require('./routes/items');
 const occasionsRoutes = require('./routes/occasions');
 const ordersRoutes = require('./routes/orders');
-// Add this line with your other route imports
 const emailRoutes = require('./routes/emails');
 
 const app = express();
@@ -22,9 +21,9 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://order-management-six-liart.vercel.app', // Your Vercel deployment
-    'https://order-management-six-liart-*.vercel.app', // Vercel preview deployments
-    'http://192.168.0.141:3000', // Your IP address access
+    'https://order-management-six-liart.vercel.app',
+    'https://order-management-six-liart-*.vercel.app',
+    'http://192.168.0.141:3000',
   ],
   credentials: true
 }));
@@ -63,7 +62,6 @@ app.get('/api/test/users', async (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-// Add this line with your other route uses
 app.use('/api/emails', emailRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/brand', brandRoutes);
@@ -78,16 +76,16 @@ mongoose.connect(process.env.MONGODB_URI, {
 }).then(async () => {
   console.log('✅ Connected to MongoDB Atlas');
   
-  // Debug: Check current database and collections
-  const db = mongoose.connection.db;
-  console.log('📊 Current database name:', db.databaseName);
-  
-  // List all collections
-  const collections = await db.listCollections().toArray();
-  console.log('📋 Available collections:', collections.map(c => c.name));
-  
-  // Check if users collection exists and count documents
   try {
+    // Debug: Check current database and collections
+    const db = mongoose.connection.db;
+    console.log('📊 Current database name:', db.databaseName);
+    
+    // List all collections
+    const collections = await db.listCollections().toArray();
+    console.log('📋 Available collections:', collections.map(c => c.name));
+    
+    // Check if users collection exists and count documents
     const User = require('./models/User');
     const userCount = await User.countDocuments();
     console.log('👥 Total users in database:', userCount);
@@ -100,14 +98,18 @@ mongoose.connect(process.env.MONGODB_URI, {
       branchCode: u.branchCode,
       branchName: u.branchName
     })));
+    
   } catch (error) {
-    console.error('❌ Error checking users:', error);
+    console.error('❌ Error during database setup:', error);
   }
   
+  // Start server
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌐 Health check: ${PORT === 5000 ? 'http://localhost:5000' : `https://order-management-fbre.onrender.com`}/api/health`);
   });
+  
 }).catch((err) => {
   console.error('❌ MongoDB connection failed:', err);
+  process.exit(1);
 });
