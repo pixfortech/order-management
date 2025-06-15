@@ -12,29 +12,46 @@ const OrderSummary = () => {
   const [branches, setBranches] = useState({});
   const [occasions, setOccasions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null); // Add error state
   
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
     occasion: '',
     status: '',
-    branch: '' // Only for admin
+    branch: ''
   });
   
-  const [viewMode, setViewMode] = useState('consolidated'); // 'consolidated' or 'orderwise'
+  const [viewMode, setViewMode] = useState('consolidated');
   const [expandedOrders, setExpandedOrders] = useState({});
+
+  // Debug: Add console logs to check user state
+  useEffect(() => {
+    console.log('OrderSummary - User data:', user);
+    console.log('OrderSummary - Is Admin:', isAdmin);
+    console.log('OrderSummary - User branch:', user?.branchCode);
+  }, [user, isAdmin]);
 
   // Fetch master data (branches and occasions)
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
+        console.log('Fetching master data...');
         const token = localStorage.getItem('authToken');
+        console.log('Auth token available:', !!token);
+        
+        if (!token) {
+          setError('No authentication token found');
+          return;
+        }
         
         // Fetch branches (only for admin)
         if (isAdmin) {
+          console.log('Fetching branches for admin...');
           const branchesResponse = await axios.get('/api/branches', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
+          console.log('Branches response:', branchesResponse.data);
           
           const branchesObj = {};
           if (Array.isArray(branchesResponse.data)) {
@@ -43,43 +60,68 @@ const OrderSummary = () => {
             });
           }
           setBranches(branchesObj);
+          console.log('Branches set:', branchesObj);
         }
         
         // Fetch occasions
+        console.log('Fetching occasions...');
         const occasionsResponse = await axios.get('/api/occasions', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        console.log('Occasions response:', occasionsResponse.data);
         
         if (Array.isArray(occasionsResponse.data)) {
-          setOccasions(occasionsResponse.data.map(occ => occ.name));
+          const occasionNames = occasionsResponse.data.map(occ => occ.name);
+          setOccasions(occasionNames);
+          console.log('Occasions set:', occasionNames);
         }
         
       } catch (error) {
         console.error('Error fetching master data:', error);
+        console.error('Error details:', error.response?.data);
+        setError(`Error fetching master data: ${error.response?.data?.message || error.message}`);
       }
     };
     
-    fetchMasterData();
-  }, [isAdmin]);
+    // Only fetch if user is available
+    if (user) {
+      fetchMasterData();
+    } else {
+      console.log('User not available yet, waiting...');
+    }
+  }, [isAdmin, user]);
 
   const fetchOrders = useCallback(async () => {
     try {
+      console.log('Starting fetchOrders...');
       setIsLoading(true);
-      const token = localStorage.getItem('authToken');
+      setError(null);
       
-      // Build the correct endpoint - SAME LOGIC AS OrderTabs
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
+
+      if (!user) {
+        console.log('User not available, skipping fetch');
+        return;
+      }
+      
+      // Build the correct endpoint
       let endpoint;
       if (isAdmin) {
         if (filters.branch) {
-          // Admin filtering by specific branch
           endpoint = `/api/orders/${filters.branch.toLowerCase()}`;
         } else {
-          // Admin viewing all orders
           endpoint = `/api/orders/all`;
         }
       } else {
-        // Staff user - only their branch orders
-        endpoint = `/api/orders/${user?.branchCode?.toLowerCase()}`;
+        if (!user.branchCode) {
+          setError('User branch code not available');
+          return;
+        }
+        endpoint = `/api/orders/${user.branchCode.toLowerCase()}`;
       }
       
       // Prepare query parameters
@@ -96,44 +138,54 @@ const OrderSummary = () => {
         }
       });
       
-      console.log('Fetching summary from endpoint:', endpoint, 'with params:', queryParams);
-      console.log('User role:', user?.role, 'Branch:', user?.branchCode);
+      console.log('Fetching from endpoint:', endpoint);
+      console.log('Query params:', queryParams);
+      console.log('User info:', { role: user?.role, branchCode: user?.branchCode });
       
       const response = await axios.get(endpoint, {
         params: queryParams,
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
+      console.log('Orders response:', response.data);
+      
       const ordersData = response.data;
+      let processedOrders = [];
+      
       if (Array.isArray(ordersData)) {
-        const realOrders = ordersData.filter(order => 
+        processedOrders = ordersData.filter(order => 
           order._id && 
           order.customerName && 
           order.customerName.trim() !== ''
         );
-        setOrders(realOrders);
       } else if (ordersData && Array.isArray(ordersData.orders)) {
-        const realOrders = ordersData.orders.filter(order => 
+        processedOrders = ordersData.orders.filter(order => 
           order._id && 
           order.customerName && 
           order.customerName.trim() !== ''
         );
-        setOrders(realOrders);
-      } else {
-        setOrders([]);
       }
       
+      console.log('Processed orders:', processedOrders);
+      setOrders(processedOrders);
+      
     } catch (err) {
-      console.error('Error fetching orders for summary:', err);
+      console.error('Error fetching orders:', err);
+      console.error('Error response:', err.response?.data);
+      const errorMessage = err.response?.data?.message || err.message || 'Unknown error';
+      setError(`Error fetching orders: ${errorMessage}`);
       setOrders([]);
     } finally {
       setIsLoading(false);
     }
-  }, [filters, isAdmin, user?.branchCode]);
+  }, [filters, isAdmin, user]);
 
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    // Only fetch orders if user is available
+    if (user) {
+      fetchOrders();
+    }
+  }, [fetchOrders, user]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -154,23 +206,27 @@ const OrderSummary = () => {
     const itemTotals = {};
     
     orders.forEach(order => {
-      order.boxes.forEach(box => {
-        box.items.forEach(item => {
-          const itemName = item.name;
-          const totalQuantity = item.qty * box.boxCount;
-          
-          if (itemTotals[itemName]) {
-            itemTotals[itemName].quantity += totalQuantity;
-            itemTotals[itemName].orders.add(order.orderNumber);
-          } else {
-            itemTotals[itemName] = {
-              quantity: totalQuantity,
-              unit: item.unit || 'pcs',
-              orders: new Set([order.orderNumber])
-            };
+      if (order.boxes && Array.isArray(order.boxes)) {
+        order.boxes.forEach(box => {
+          if (box.items && Array.isArray(box.items)) {
+            box.items.forEach(item => {
+              const itemName = item.name;
+              const totalQuantity = item.qty * (box.boxCount || 1);
+              
+              if (itemTotals[itemName]) {
+                itemTotals[itemName].quantity += totalQuantity;
+                itemTotals[itemName].orders.add(order.orderNumber);
+              } else {
+                itemTotals[itemName] = {
+                  quantity: totalQuantity,
+                  unit: item.unit || 'pcs',
+                  orders: new Set([order.orderNumber])
+                };
+              }
+            });
           }
         });
-      });
+      }
     });
     
     // Convert Set to Array for orders
@@ -188,21 +244,25 @@ const OrderSummary = () => {
     orders.forEach(order => {
       const orderItems = {};
       
-      order.boxes.forEach(box => {
-        box.items.forEach(item => {
-          const itemName = item.name;
-          const totalQuantity = item.qty * box.boxCount;
-          
-          if (orderItems[itemName]) {
-            orderItems[itemName].quantity += totalQuantity;
-          } else {
-            orderItems[itemName] = {
-              quantity: totalQuantity,
-              unit: item.unit || 'pcs'
-            };
+      if (order.boxes && Array.isArray(order.boxes)) {
+        order.boxes.forEach(box => {
+          if (box.items && Array.isArray(box.items)) {
+            box.items.forEach(item => {
+              const itemName = item.name;
+              const totalQuantity = item.qty * (box.boxCount || 1);
+              
+              if (orderItems[itemName]) {
+                orderItems[itemName].quantity += totalQuantity;
+              } else {
+                orderItems[itemName] = {
+                  quantity: totalQuantity,
+                  unit: item.unit || 'pcs'
+                };
+              }
+            });
           }
         });
-      });
+      }
       
       orderBreakdown[order.orderNumber] = {
         ...order,
@@ -274,8 +334,61 @@ const OrderSummary = () => {
     }
   };
 
+  // Early return if user is not loaded
+  if (!user) {
+    return (
+      <div className="order-summary-container">
+        <div className="loading-container">
+          Loading user data...
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="order-summary-container">
+        <div className="error-container" style={{
+          padding: '20px',
+          backgroundColor: '#fee',
+          border: '1px solid #fcc',
+          borderRadius: '4px',
+          margin: '20px'
+        }}>
+          <h3>Error</h3>
+          <p>{error}</p>
+          <button onClick={() => {
+            setError(null);
+            fetchOrders();
+          }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="order-summary-container">
+      {/* Debug Info - Remove in production */}
+      <div style={{ 
+        padding: '10px', 
+        backgroundColor: '#f0f0f0', 
+        margin: '10px',
+        fontSize: '12px',
+        fontFamily: 'monospace'
+      }}>
+        <strong>Debug Info:</strong><br/>
+        User: {user?.email || 'Not loaded'}<br/>
+        Role: {user?.role || 'Not set'}<br/>
+        Branch: {user?.branchCode || 'Not set'}<br/>
+        Orders Count: {orders.length}<br/>
+        Loading: {isLoading ? 'Yes' : 'No'}<br/>
+        Branches Count: {Object.keys(branches).length}<br/>
+        Occasions Count: {occasions.length}
+      </div>
+
       {/* Filters Section */}
       <div className="order-summary-filters">
         <div className="order-summary-header">
@@ -496,7 +609,6 @@ const OrderSummary = () => {
                         <div className="order-info">
                           <h4>{orderNumber}</h4>
                           <p>{order.customerName} | {order.deliveryDate}</p>
-                          {/* Always show branch info for context */}
                           <span className="branch-tag">
                             {branches[order.branchCode] || order.branch || 'Unknown Branch'} ({order.branchCode})
                           </span>
