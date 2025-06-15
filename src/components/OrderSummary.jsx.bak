@@ -93,7 +93,16 @@ const OrderSummary = () => {
 
   const fetchOrders = useCallback(async () => {
     try {
-      console.log('Starting fetchOrders...');
+      console.log('🔍 Starting fetchOrders...');
+      console.log('🌐 Current environment:', {
+        hostname: window.location.hostname,
+        href: window.location.href,
+        origin: window.location.origin,
+        isLocalhost: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+        nodeEnv: process.env.NODE_ENV,
+        reactAppApiUrl: process.env.REACT_APP_API_URL
+      });
+      
       setIsLoading(true);
       setError(null);
       
@@ -108,20 +117,57 @@ const OrderSummary = () => {
         return;
       }
       
+      // ✅ FIXED: Use consistent API URL logic
+      const getApiUrl = () => {
+        const envUrl = process.env.REACT_APP_API_URL;
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+        
+        console.log('🌐 API URL Detection:', {
+          envUrl,
+          hostname,
+          isLocalhost,
+          nodeEnv: process.env.NODE_ENV
+        });
+        
+        // For Vercel deployment, always use cloud URL unless explicitly set
+        if (!isLocalhost) {
+          const cloudUrl = 'https://order-management-fbre.onrender.com';
+          console.log('☁️ Using cloud URL for deployment:', cloudUrl);
+          return cloudUrl;
+        }
+        
+        if (envUrl) {
+          console.log('✅ Using environment API URL:', envUrl);
+          return envUrl;
+        }
+        
+        if (isLocalhost) {
+          console.log('🏠 Using localhost API URL');
+          return 'http://localhost:5000';
+        }
+        
+        const cloudUrl = 'https://order-management-fbre.onrender.com';
+        console.log('☁️ Fallback to cloud API URL:', cloudUrl);
+        return cloudUrl;
+      };
+      
+      const baseUrl = getApiUrl();
+      
       // Build the correct endpoint
       let endpoint;
       if (isAdmin) {
         if (filters.branch) {
-          endpoint = `/api/orders/${filters.branch.toLowerCase()}`;
+          endpoint = `${baseUrl}/api/orders/${filters.branch.toLowerCase()}`;
         } else {
-          endpoint = `/api/orders/all`;
+          endpoint = `${baseUrl}/api/orders/all`;
         }
       } else {
         if (!user.branchCode) {
           setError('User branch code not available');
           return;
         }
-        endpoint = `/api/orders/${user.branchCode.toLowerCase()}`;
+        endpoint = `${baseUrl}/api/orders/${user.branchCode.toLowerCase()}`;
       }
       
       // Prepare query parameters
@@ -138,9 +184,9 @@ const OrderSummary = () => {
         }
       });
       
-      console.log('Fetching from endpoint:', endpoint);
-      console.log('Query params:', queryParams);
-      console.log('User info:', { role: user?.role, branchCode: user?.branchCode });
+      console.log('🔗 Final API endpoint:', endpoint);
+      console.log('🔗 Base URL used:', baseUrl);
+      console.log('👤 User info:', { role: user?.role, branchCode: user?.branchCode });
       
       const response = await axios.get(endpoint, {
         params: queryParams,
