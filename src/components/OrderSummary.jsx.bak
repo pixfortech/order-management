@@ -4,7 +4,7 @@ import { FaSearch, FaEye, FaChevronDown, FaChevronUp, FaDownload } from 'react-i
 import { useAuth } from '../auth/AuthContext';
 import './OrderSummary.css';
 
-const Summary = () => {
+const OrderSummary = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   
@@ -275,10 +275,10 @@ const Summary = () => {
   };
 
   return (
-    <div className="summary-container">
+    <div className="order-summary-container">
       {/* Filters Section */}
-      <div className="summary-filters">
-        <div className="summary-header">
+      <div className="order-summary-filters">
+        <div className="order-summary-header">
           <h2>📊 Order Summary & Reports</h2>
           <div className="current-branch-display">
             <span className="branch-indicator">
@@ -395,7 +395,7 @@ const Summary = () => {
       </div>
 
       {/* Results Section */}
-      <div className="summary-results">
+      <div className="order-summary-results">
         {isLoading ? (
           <div className="loading-container">
             Loading summary data...
