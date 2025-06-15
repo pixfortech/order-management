@@ -13,6 +13,7 @@ const itemsRoutes = require('./routes/items');
 const occasionsRoutes = require('./routes/occasions');
 const ordersRoutes = require('./routes/orders');
 const emailRoutes = require('./routes/emails');
+const vendorsRoutes = require('./routes/vendors');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -68,6 +69,7 @@ app.use('/api/brand', brandRoutes);
 app.use('/api/items', itemsRoutes);
 app.use('/api/occasions', occasionsRoutes);
 app.use('/api/orders', ordersRoutes);
+app.use('/api/vendors', vendorsRoutes);
 
 // MongoDB connection with debug info
 mongoose.connect(process.env.MONGODB_URI, {

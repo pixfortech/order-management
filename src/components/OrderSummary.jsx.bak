@@ -12,7 +12,7 @@ const OrderSummary = () => {
   const [branches, setBranches] = useState({});
   const [occasions, setOccasions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null); // Add error state
+  const [error, setError] = useState(null);
   
   const [filters, setFilters] = useState({
     startDate: '',
@@ -25,6 +25,41 @@ const OrderSummary = () => {
   const [viewMode, setViewMode] = useState('consolidated');
   const [expandedOrders, setExpandedOrders] = useState({});
 
+  // ✅ FIXED: Use same API URL logic as AuthContext
+  const getApiUrl = () => {
+    const envUrl = process.env.REACT_APP_API_URL;
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+    
+    console.log('🌐 OrderSummary API URL Detection:', {
+      envUrl,
+      hostname,
+      isLocalhost,
+      nodeEnv: process.env.NODE_ENV
+    });
+    
+    // For Vercel deployment, always use cloud URL unless explicitly set
+    if (!isLocalhost || process.env.NODE_ENV === 'production') {
+      const cloudUrl = 'https://order-management-fbre.onrender.com';
+      console.log('☁️ OrderSummary using cloud URL:', cloudUrl);
+      return cloudUrl;
+    }
+    
+    if (envUrl) {
+      console.log('✅ OrderSummary using environment API URL:', envUrl);
+      return envUrl;
+    }
+    
+    if (isLocalhost) {
+      console.log('🏠 OrderSummary using localhost API URL');
+      return 'http://localhost:5000';
+    }
+    
+    const fallbackUrl = 'https://order-management-fbre.onrender.com';
+    console.log('⚠️ OrderSummary using fallback URL:', fallbackUrl);
+    return fallbackUrl;
+  };
+
   // Debug: Add console logs to check user state
   useEffect(() => {
     console.log('OrderSummary - User data:', user);
@@ -36,7 +71,7 @@ const OrderSummary = () => {
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        console.log('Fetching master data...');
+        console.log('🔍 OrderSummary - Fetching master data...');
         const token = localStorage.getItem('authToken');
         console.log('Auth token available:', !!token);
         
@@ -44,11 +79,14 @@ const OrderSummary = () => {
           setError('No authentication token found');
           return;
         }
+
+        const baseUrl = getApiUrl();
+        console.log('🌐 OrderSummary - Using base URL for master data:', baseUrl);
         
         // Fetch branches (only for admin)
         if (isAdmin) {
-          console.log('Fetching branches for admin...');
-          const branchesResponse = await axios.get('/api/branches', {
+          console.log('🏢 Fetching branches for admin...');
+          const branchesResponse = await axios.get(`${baseUrl}/api/branches`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           console.log('Branches response:', branchesResponse.data);
@@ -60,12 +98,12 @@ const OrderSummary = () => {
             });
           }
           setBranches(branchesObj);
-          console.log('Branches set:', branchesObj);
+          console.log('✅ Branches set:', Object.keys(branchesObj).length);
         }
         
         // Fetch occasions
-        console.log('Fetching occasions...');
-        const occasionsResponse = await axios.get('/api/occasions', {
+        console.log('🎉 Fetching occasions...');
+        const occasionsResponse = await axios.get(`${baseUrl}/api/occasions`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         console.log('Occasions response:', occasionsResponse.data);
@@ -73,12 +111,12 @@ const OrderSummary = () => {
         if (Array.isArray(occasionsResponse.data)) {
           const occasionNames = occasionsResponse.data.map(occ => occ.name);
           setOccasions(occasionNames);
-          console.log('Occasions set:', occasionNames);
+          console.log('✅ Occasions set:', occasionNames.length);
         }
         
       } catch (error) {
-        console.error('Error fetching master data:', error);
-        console.error('Error details:', error.response?.data);
+        console.error('❌ Error fetching master data:', error);
+        console.error('❌ Error details:', error.response?.data);
         setError(`Error fetching master data: ${error.response?.data?.message || error.message}`);
       }
     };
@@ -87,22 +125,13 @@ const OrderSummary = () => {
     if (user) {
       fetchMasterData();
     } else {
-      console.log('User not available yet, waiting...');
+      console.log('⏳ User not available yet, waiting...');
     }
   }, [isAdmin, user]);
 
   const fetchOrders = useCallback(async () => {
     try {
-      console.log('🔍 Starting fetchOrders...');
-      console.log('🌐 Current environment:', {
-        hostname: window.location.hostname,
-        href: window.location.href,
-        origin: window.location.origin,
-        isLocalhost: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
-        nodeEnv: process.env.NODE_ENV,
-        reactAppApiUrl: process.env.REACT_APP_API_URL
-      });
-      
+      console.log('🔍 OrderSummary - Starting fetchOrders...');
       setIsLoading(true);
       setError(null);
       
@@ -113,48 +142,21 @@ const OrderSummary = () => {
       }
 
       if (!user) {
-        console.log('User not available, skipping fetch');
+        console.log('❌ User not available, skipping fetch');
+        setError('User data not loaded');
         return;
       }
-      
-      // ✅ FIXED: Use consistent API URL logic
-      const getApiUrl = () => {
-        const envUrl = process.env.REACT_APP_API_URL;
-        const hostname = window.location.hostname;
-        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
-        
-        console.log('🌐 API URL Detection:', {
-          envUrl,
-          hostname,
-          isLocalhost,
-          nodeEnv: process.env.NODE_ENV
-        });
-        
-        // For Vercel deployment, always use cloud URL unless explicitly set
-        if (!isLocalhost) {
-          const cloudUrl = 'https://order-management-fbre.onrender.com';
-          console.log('☁️ Using cloud URL for deployment:', cloudUrl);
-          return cloudUrl;
-        }
-        
-        if (envUrl) {
-          console.log('✅ Using environment API URL:', envUrl);
-          return envUrl;
-        }
-        
-        if (isLocalhost) {
-          console.log('🏠 Using localhost API URL');
-          return 'http://localhost:5000';
-        }
-        
-        const cloudUrl = 'https://order-management-fbre.onrender.com';
-        console.log('☁️ Fallback to cloud API URL:', cloudUrl);
-        return cloudUrl;
-      };
+
+      console.log('✅ User data available:', {
+        role: user.role,
+        branchCode: user.branchCode,
+        branch: user.branch
+      });
       
       const baseUrl = getApiUrl();
+      console.log('🌐 OrderSummary - Using base URL for orders:', baseUrl);
       
-      // Build the correct endpoint
+      // Build the correct endpoint with absolute URL
       let endpoint;
       if (isAdmin) {
         if (filters.branch) {
@@ -184,8 +186,8 @@ const OrderSummary = () => {
         }
       });
       
-      console.log('🔗 Final API endpoint:', endpoint);
-      console.log('🔗 Base URL used:', baseUrl);
+      console.log('🔗 OrderSummary Final API endpoint:', endpoint);
+      console.log('📝 Query params:', queryParams);
       console.log('👤 User info:', { role: user?.role, branchCode: user?.branchCode });
       
       const response = await axios.get(endpoint, {
@@ -193,7 +195,8 @@ const OrderSummary = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
-      console.log('Orders response:', response.data);
+      console.log('📊 Orders response status:', response.status);
+      console.log('📊 Orders data:', response.data);
       
       const ordersData = response.data;
       let processedOrders = [];
@@ -212,12 +215,12 @@ const OrderSummary = () => {
         );
       }
       
-      console.log('Processed orders:', processedOrders);
+      console.log('✅ Processed orders:', processedOrders.length);
       setOrders(processedOrders);
       
     } catch (err) {
-      console.error('Error fetching orders:', err);
-      console.error('Error response:', err.response?.data);
+      console.error('❌ OrderSummary fetch error:', err);
+      console.error('❌ Error response:', err.response?.data);
       const errorMessage = err.response?.data?.message || err.message || 'Unknown error';
       setError(`Error fetching orders: ${errorMessage}`);
       setOrders([]);
@@ -426,13 +429,14 @@ const OrderSummary = () => {
         fontFamily: 'monospace'
       }}>
         <strong>Debug Info:</strong><br/>
-        User: {user?.email || 'Not loaded'}<br/>
+        User: {user?.username || 'Not loaded'}<br/>
         Role: {user?.role || 'Not set'}<br/>
         Branch: {user?.branchCode || 'Not set'}<br/>
         Orders Count: {orders.length}<br/>
         Loading: {isLoading ? 'Yes' : 'No'}<br/>
         Branches Count: {Object.keys(branches).length}<br/>
-        Occasions Count: {occasions.length}
+        Occasions Count: {occasions.length}<br/>
+        API URL: {getApiUrl()}
       </div>
 
       {/* Filters Section */}
