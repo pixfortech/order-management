@@ -1,8 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import OrderForm from './OrderForm';
 import OrderTabs from './OrderTabs';
-import OrderSummary from './OrderSummary'; // Add this import
-import { useAuth } from '../auth/AuthContext';
+import OrderSummary from './OrderSummary';
 import SettingsPanel from './SettingsPanel';
 
 const MainLayout = () => {
@@ -23,7 +23,7 @@ const MainLayout = () => {
     const fetchBrandData = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://localhost:5000/api/brand', {
+        const response = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();

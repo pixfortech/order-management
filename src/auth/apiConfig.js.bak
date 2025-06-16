@@ -1,0 +1,96 @@
+// ✅ UNIVERSAL API URL HELPER - Use this in ALL components
+
+export const getApiUrl = () => {
+  const envUrl = process.env.REACT_APP_API_URL;
+  const hostname = window.location.hostname;
+  
+  // More comprehensive localhost detection
+  const isLocalhost = 
+    hostname === 'localhost' || 
+    hostname === '127.0.0.1' || 
+    hostname.startsWith('192.168.') || 
+    hostname.startsWith('10.') ||
+    hostname.includes('local');
+  
+  console.log('🌐 API URL Detection:', {
+    envUrl,
+    hostname,
+    isLocalhost,
+    nodeEnv: process.env.NODE_ENV,
+    origin: window.location.origin
+  });
+  
+  // 1. If environment variable is set, use it (highest priority)
+  if (envUrl && envUrl.trim()) {
+    console.log('✅ Using REACT_APP_API_URL:', envUrl);
+    return envUrl.trim();
+  }
+  
+  // 2. For production/Vercel, always use cloud URL
+  if (!isLocalhost || process.env.NODE_ENV === 'production') {
+    const cloudUrl = 'https://order-management-fbre.onrender.com';
+    console.log('☁️ Using cloud URL for production:', cloudUrl);
+    return cloudUrl;
+  }
+  
+  // 3. For localhost development
+  if (isLocalhost) {
+    console.log('🏠 Using localhost API URL');
+    return 'http://localhost:5000';
+  }
+  
+  // 4. Final fallback
+  const fallbackUrl = 'https://order-management-fbre.onrender.com';
+  console.log('⚠️ Using fallback URL:', fallbackUrl);
+  return fallbackUrl;
+};
+
+// Universal API call function
+export const apiCall = async (endpoint, options = {}) => {
+  const baseUrl = getApiUrl();
+  const url = `${baseUrl}/api${endpoint}`;
+  
+  console.log('🔗 API Call:', {
+    endpoint,
+    fullUrl: url,
+    method: options.method || 'GET'
+  });
+  
+  const defaultOptions = {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  };
+  
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    defaultOptions.headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const finalOptions = {
+    ...defaultOptions,
+    ...options,
+    headers: {
+      ...defaultOptions.headers,
+      ...options.headers,
+    },
+  };
+  
+  try {
+    const response = await fetch(url, finalOptions);
+    
+    console.log('📡 API Response:', {
+      url,
+      status: response.status,
+      ok: response.ok
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('❌ API Call Error:', {
+      url,
+      error: error.message
+    });
+    throw error;
+  }
+};

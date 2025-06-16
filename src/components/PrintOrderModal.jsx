@@ -12,7 +12,7 @@ const PrintOrderModal = ({ order, onClose }) => {
     const fetchBrandDetails = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('/api/brand', {
+        const response = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         

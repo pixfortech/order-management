@@ -1,7 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import OrderForm from './OrderForm';
 import OrderTabs from './OrderTabs';
-import { useAuth } from '../auth/AuthContext';
+import OrderSummary from './OrderSummary';
 import SettingsPanel from './SettingsPanel';
 
 const MainLayout = () => {
@@ -131,10 +132,8 @@ const MainLayout = () => {
           <OrderTabs setSelectedOrder={setSelectedOrder} switchToFormTab={() => setActiveTab('order')} />
         )}
         
-        {/* Summary - Always accessible */}
-        {activeTab === 'summary' && (
-          <div><h3>📊 Summary/Reports coming soon...</h3></div>
-        )}
+        {/* Summary - Now using OrderSummary component */}
+        {activeTab === 'summary' && <OrderSummary />}
         
         {/* Settings - Only accessible by admin */}
         {activeTab === 'settings' && isAdmin && <SettingsPanel />}

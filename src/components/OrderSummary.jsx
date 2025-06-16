@@ -13,6 +13,7 @@ const OrderSummary = () => {
   const [occasions, setOccasions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [items, setItems] = useState([]);
   
   const [filters, setFilters] = useState({
     startDate: '',
@@ -22,6 +23,15 @@ const OrderSummary = () => {
     branch: '',
     vendor: '' // Add vendor filter
   });
+  
+  // Create item-to-vendor mapping
+const createItemVendorMap = useCallback(() => {
+  const itemVendorMap = {};
+  items.forEach(item => {
+    itemVendorMap[item.name] = item.vendor || 'Unknown Vendor';
+  });
+  return itemVendorMap;
+}, [items]);
   
   const [viewMode, setViewMode] = useState('consolidated');
   const [expandedOrders, setExpandedOrders] = useState({});
@@ -70,24 +80,26 @@ const OrderSummary = () => {
   }, [user, isAdmin]);
 
   // Fetch master data (branches and occasions)
-  useEffect(() => {
-    const fetchMasterData = async () => {
-      try {
-        console.log('🔍 OrderSummary - Fetching master data...');
-        const token = localStorage.getItem('authToken');
-        console.log('Auth token available:', !!token);
-        
-        if (!token) {
-          setError('No authentication token found');
-          return;
-        }
+  // Fetch master data (branches, occasions, items, vendors)
+useEffect(() => {
+  const fetchMasterData = async () => {
+    try {
+      console.log('🔍 OrderSummary - Fetching master data...');
+      const token = localStorage.getItem('authToken');
+      console.log('Auth token available:', !!token);
+      
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
 
-        const baseUrl = getApiUrl();
-        console.log('🌐 OrderSummary - Using base URL for master data:', baseUrl);
-        
-        // Fetch branches (only for admin)
-        if (isAdmin) {
-          console.log('🏢 Fetching branches for admin...');
+      const baseUrl = getApiUrl();
+      console.log('🌐 OrderSummary - Using base URL for master data:', baseUrl);
+      
+      // Fetch branches (only for admin)
+      if (isAdmin) {
+        console.log('🏢 Fetching branches for admin...');
+        try {
           const branchesResponse = await axios.get(`${baseUrl}/api/branches`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -100,11 +112,15 @@ const OrderSummary = () => {
             });
           }
           setBranches(branchesObj);
-          console.log('✅ Branches set:', Object.keys(branchesObj).length);
+          console.log('✅ Branches loaded:', Object.keys(branchesObj).length);
+        } catch (branchError) {
+          console.warn('⚠️ Failed to fetch branches:', branchError.message);
         }
-        
-        // Fetch occasions
-        console.log('🎉 Fetching occasions...');
+      }
+      
+      // Fetch occasions
+      console.log('🎉 Fetching occasions...');
+      try {
         const occasionsResponse = await axios.get(`${baseUrl}/api/occasions`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -113,37 +129,79 @@ const OrderSummary = () => {
         if (Array.isArray(occasionsResponse.data)) {
           const occasionNames = occasionsResponse.data.map(occ => occ.name);
           setOccasions(occasionNames);
-          console.log('✅ Occasions set:', occasionNames.length);
+          console.log('✅ Occasions loaded:', occasionNames.length);
         }
+      } catch (occasionError) {
+        console.warn('⚠️ Failed to fetch occasions:', occasionError.message);
+      }
 
-        // Fetch vendors for vendor filter
-        console.log('🏪 Fetching vendors...');
+      // ✅ NEW: Fetch items to get vendor mapping (MOST IMPORTANT)
+      console.log('📦 Fetching items for vendor mapping...');
+      try {
+        const itemsResponse = await axios.get(`${baseUrl}/api/items`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        console.log('Items response:', itemsResponse.data);
+        
+        if (Array.isArray(itemsResponse.data)) {
+          setItems(itemsResponse.data);
+          console.log('✅ Items loaded:', itemsResponse.data.length);
+          
+          // Extract unique vendors from items collection
+          const uniqueVendors = [...new Set(
+            itemsResponse.data
+              .map(item => item.vendor)
+              .filter(vendor => vendor && vendor.trim() !== '')
+          )];
+          
+          console.log('📋 Vendors found in items:', uniqueVendors);
+          setVendors(uniqueVendors);
+          console.log('✅ Vendors extracted from items:', uniqueVendors.length);
+        }
+      } catch (itemsError) {
+        console.error('❌ Failed to fetch items:', itemsError.message);
+        // Items are critical for vendor mapping, so set error but continue
+        console.warn('⚠️ Items fetch failed - vendor mapping will not work properly');
+      }
+
+      // ✅ BACKUP: Also fetch vendors collection if available
+      console.log('🏪 Fetching vendors collection as backup...');
+      try {
         const vendorsResponse = await axios.get(`${baseUrl}/api/vendors`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        console.log('Vendors response:', vendorsResponse.data);
+        console.log('Vendors collection response:', vendorsResponse.data);
         
         if (Array.isArray(vendorsResponse.data)) {
-          const vendorNames = vendorsResponse.data.map(vendor => vendor.name);
-          setVendors(vendorNames);
-          console.log('✅ Vendors set:', vendorNames.length);
+          const vendorCollectionNames = vendorsResponse.data.map(vendor => vendor.name);
+          console.log('📋 Vendors from collection:', vendorCollectionNames);
+          
+          // Merge vendors from items and vendors collection (items take priority)
+          setVendors(prevVendors => {
+            const mergedVendors = [...new Set([...prevVendors, ...vendorCollectionNames])];
+            console.log('✅ Final merged vendors:', mergedVendors);
+            return mergedVendors;
+          });
         }
-        
-        
-      } catch (error) {
-        console.error('❌ Error fetching master data:', error);
-        console.error('❌ Error details:', error.response?.data);
-        setError(`Error fetching master data: ${error.response?.data?.message || error.message}`);
+      } catch (vendorError) {
+        console.warn('⚠️ Vendors collection not available:', vendorError.message);
+        console.log('ℹ️ Using vendors from items collection only');
       }
-    };
-    
-    // Only fetch if user is available
-    if (user) {
-      fetchMasterData();
-    } else {
-      console.log('⏳ User not available yet, waiting...');
+      
+    } catch (error) {
+      console.error('❌ Error fetching master data:', error);
+      console.error('❌ Error details:', error.response?.data);
+      setError(`Error fetching master data: ${error.response?.data?.message || error.message}`);
     }
-  }, [isAdmin, user]);
+  };
+  
+  // Only fetch if user is available
+  if (user) {
+    fetchMasterData();
+  } else {
+    console.log('⏳ User not available yet, waiting...');
+  }
+}, [isAdmin, user]); // ✅ FIXED: Removed vendors dependency to prevent infinite loop
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -268,124 +326,151 @@ const OrderSummary = () => {
   };
 
   // Calculate consolidated item totals
-  const getConsolidatedItems = () => {
-    const itemTotals = {};
-    
-    orders.forEach(order => {
-      if (order.boxes && Array.isArray(order.boxes)) {
-        order.boxes.forEach(box => {
-          if (box.items && Array.isArray(box.items)) {
-            box.items.forEach(item => {
-              const itemName = item.name;
-              const vendorName = item.vendor || 'Unknown Vendor';
-              const totalQuantity = item.qty * (box.boxCount || 1);
-              
-              if (itemTotals[itemName]) {
-                itemTotals[itemName].quantity += totalQuantity;
-                itemTotals[itemName].orders.add(order.orderNumber);
-              } else {
-                itemTotals[itemName] = {
-                  quantity: totalQuantity,
-                  unit: item.unit || 'pcs',
-                  vendor: vendorName,
-                  orders: new Set([order.orderNumber])
-                };
-              }
-            });
-          }
-        });
+  // ✅ FIXED: Calculate consolidated item totals with proper vendor mapping
+const getConsolidatedItems = () => {
+  const itemTotals = {};
+  const itemVendorMap = createItemVendorMap();
+  
+  orders.forEach(order => {
+    if (order.boxes && Array.isArray(order.boxes)) {
+      order.boxes.forEach(box => {
+        if (box.items && Array.isArray(box.items)) {
+          box.items.forEach(item => {
+            const itemName = item.name;
+            // ✅ FIXED: Get vendor from items collection mapping
+            const vendorName = itemVendorMap[itemName] || 'Unknown Vendor';
+            const totalQuantity = item.qty * (box.boxCount || 1);
+            
+            if (itemTotals[itemName]) {
+              itemTotals[itemName].quantity += totalQuantity;
+              itemTotals[itemName].orders.add(order.orderNumber);
+            } else {
+              itemTotals[itemName] = {
+                quantity: totalQuantity,
+                unit: item.unit || 'pcs',
+                vendor: vendorName,
+                orders: new Set([order.orderNumber])
+              };
+            }
+          });
+        }
+      });
+    }
+  });
+  
+  // Filter by vendor if selected
+  if (filters.vendor) {
+    Object.keys(itemTotals).forEach(itemName => {
+      if (itemTotals[itemName].vendor !== filters.vendor) {
+        delete itemTotals[itemName];
       }
     });
-    
-    // Convert Set to Array for orders
-    Object.keys(itemTotals).forEach(itemName => {
-      itemTotals[itemName].orders = Array.from(itemTotals[itemName].orders);
-    });
-    
-    return itemTotals;
-  };
+  }
+  
+  // Convert Set to Array for orders
+  Object.keys(itemTotals).forEach(itemName => {
+    itemTotals[itemName].orders = Array.from(itemTotals[itemName].orders);
+  });
+  
+  return itemTotals;
+};
 
   // Calculate vendor-wise item totals
-  const getVendorWiseItems = () => {
-    const vendorTotals = {};
-    
-    orders.forEach(order => {
-      if (order.boxes && Array.isArray(order.boxes)) {
-        order.boxes.forEach(box => {
-          if (box.items && Array.isArray(box.items)) {
-            box.items.forEach(item => {
-              const itemName = item.name;
-              const vendorName = item.vendor || 'Unknown Vendor';
-              const totalQuantity = item.qty * (box.boxCount || 1);
-              
-              if (!vendorTotals[vendorName]) {
-                vendorTotals[vendorName] = {};
-              }
-              
-              if (vendorTotals[vendorName][itemName]) {
-                vendorTotals[vendorName][itemName].quantity += totalQuantity;
-                vendorTotals[vendorName][itemName].orders.add(order.orderNumber);
-              } else {
-                vendorTotals[vendorName][itemName] = {
-                  quantity: totalQuantity,
-                  unit: item.unit || 'pcs',
-                  vendor: vendorName,
-                  orders: new Set([order.orderNumber])
-                };
-              }
-            });
-          }
-        });
-      }
-    });
-    
-    // Convert Set to Array for orders
-    Object.keys(vendorTotals).forEach(vendorName => {
-      Object.keys(vendorTotals[vendorName]).forEach(itemName => {
-        vendorTotals[vendorName][itemName].orders = Array.from(vendorTotals[vendorName][itemName].orders);
+  // ✅ FIXED: Calculate vendor-wise item totals with proper vendor mapping
+const getVendorWiseItems = () => {
+  const vendorTotals = {};
+  const itemVendorMap = createItemVendorMap();
+  
+  orders.forEach(order => {
+    if (order.boxes && Array.isArray(order.boxes)) {
+      order.boxes.forEach(box => {
+        if (box.items && Array.isArray(box.items)) {
+          box.items.forEach(item => {
+            const itemName = item.name;
+            // ✅ FIXED: Get vendor from items collection mapping
+            const vendorName = itemVendorMap[itemName] || 'Unknown Vendor';
+            const totalQuantity = item.qty * (box.boxCount || 1);
+            
+            if (!vendorTotals[vendorName]) {
+              vendorTotals[vendorName] = {};
+            }
+            
+            if (vendorTotals[vendorName][itemName]) {
+              vendorTotals[vendorName][itemName].quantity += totalQuantity;
+              vendorTotals[vendorName][itemName].orders.add(order.orderNumber);
+            } else {
+              vendorTotals[vendorName][itemName] = {
+                quantity: totalQuantity,
+                unit: item.unit || 'pcs',
+                vendor: vendorName,
+                orders: new Set([order.orderNumber])
+              };
+            }
+          });
+        }
       });
+    }
+  });
+  
+  // Filter by vendor if selected
+  if (filters.vendor) {
+    const filteredVendorTotals = {};
+    if (vendorTotals[filters.vendor]) {
+      filteredVendorTotals[filters.vendor] = vendorTotals[filters.vendor];
+    }
+    return filteredVendorTotals;
+  }
+  
+  // Convert Set to Array for orders
+  Object.keys(vendorTotals).forEach(vendorName => {
+    Object.keys(vendorTotals[vendorName]).forEach(itemName => {
+      vendorTotals[vendorName][itemName].orders = Array.from(vendorTotals[vendorName][itemName].orders);
     });
-    
-    return vendorTotals;
-  };
+  });
+  
+  return vendorTotals;
+};
 
   // Calculate order-wise breakdown
-  const getOrderWiseBreakdown = () => {
-    const orderBreakdown = {};
+  // ✅ FIXED: Calculate order-wise breakdown with proper vendor mapping
+const getOrderWiseBreakdown = () => {
+  const orderBreakdown = {};
+  const itemVendorMap = createItemVendorMap();
+  
+  orders.forEach(order => {
+    const orderItems = {};
     
-    orders.forEach(order => {
-      const orderItems = {};
-      
-      if (order.boxes && Array.isArray(order.boxes)) {
-        order.boxes.forEach(box => {
-          if (box.items && Array.isArray(box.items)) {
-            box.items.forEach(item => {
-              const itemName = item.name;
-              const vendorName = item.vendor || 'Unknown Vendor';
-              const totalQuantity = item.qty * (box.boxCount || 1);
-              
-              if (orderItems[itemName]) {
-                orderItems[itemName].quantity += totalQuantity;
-              } else {
-                orderItems[itemName] = {
-                  quantity: totalQuantity,
-                  unit: item.unit || 'pcs',
-                  vendor: vendorName
-                };
-              }
-            });
-          }
-        });
-      }
-      
-      orderBreakdown[order.orderNumber] = {
-        ...order,
-        items: orderItems
-      };
-    });
+    if (order.boxes && Array.isArray(order.boxes)) {
+      order.boxes.forEach(box => {
+        if (box.items && Array.isArray(box.items)) {
+          box.items.forEach(item => {
+            const itemName = item.name;
+            // ✅ FIXED: Get vendor from items collection mapping
+            const vendorName = itemVendorMap[itemName] || 'Unknown Vendor';
+            const totalQuantity = item.qty * (box.boxCount || 1);
+            
+            if (orderItems[itemName]) {
+              orderItems[itemName].quantity += totalQuantity;
+            } else {
+              orderItems[itemName] = {
+                quantity: totalQuantity,
+                unit: item.unit || 'pcs',
+                vendor: vendorName
+              };
+            }
+          });
+        }
+      });
+    }
     
-    return orderBreakdown;
-  };
+    orderBreakdown[order.orderNumber] = {
+      ...order,
+      items: orderItems
+    };
+  });
+  
+  return orderBreakdown;
+};
 
   const exportToCSV = () => {
     const currentBranch = isAdmin ? 

@@ -46,6 +46,30 @@ const SettingsPanel = () => {
     logo: null
   });
   const [originalBrandDetails, setOriginalBrandDetails] = useState({});
+  
+  // Customers Management State
+const [customers, setCustomers] = useState([]);
+const [customersPagination, setCustomersPagination] = useState({
+  currentPage: 1,
+  itemsPerPage: 10,
+  totalItems: 0
+});
+const [newCustomer, setNewCustomer] = useState({
+  name: '',
+  phone: '',
+  email: '',
+  address: '',
+  branch: currentUser.role === 'admin' ? '' : currentUser.branch
+});
+const [editingCustomerId, setEditingCustomerId] = useState(null);
+const [selectedCustomer, setSelectedCustomer] = useState(null);
+const [customerOrders, setCustomerOrders] = useState([]);
+const [customerStats, setCustomerStats] = useState({
+  totalOrders: 0,
+  distinctBoxes: 0,
+  totalBoxes: 0,
+  totalAmount: 0
+});
 
   // Theme State
   const [themeColor, setThemeColor] = useState('#49488D');
@@ -107,24 +131,28 @@ const SettingsPanel = () => {
   };
 
   const handlePageChange = (type, newPage) => {
-    if (type === 'users') {
-      setUsersPagination(prev => ({ ...prev, currentPage: newPage }));
-    } else if (type === 'items') {
-      setItemsPagination(prev => ({ ...prev, currentPage: newPage }));
-    } else if (type === 'occasions') {
-      setOccasionsPagination(prev => ({ ...prev, currentPage: newPage }));
-    }
-  };
+  if (type === 'users') {
+    setUsersPagination(prev => ({ ...prev, currentPage: newPage }));
+  } else if (type === 'items') {
+    setItemsPagination(prev => ({ ...prev, currentPage: newPage }));
+  } else if (type === 'occasions') {
+    setOccasionsPagination(prev => ({ ...prev, currentPage: newPage }));
+  } else if (type === 'customers') {
+    setCustomersPagination(prev => ({ ...prev, currentPage: newPage }));
+  }
+};
 
   const handleItemsPerPageChange = (type, itemsPerPage) => {
-    if (type === 'users') {
-      setUsersPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
-    } else if (type === 'items') {
-      setItemsPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
-    } else if (type === 'occasions') {
-      setOccasionsPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
-    }
-  };
+  if (type === 'users') {
+    setUsersPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+  } else if (type === 'items') {
+    setItemsPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+  } else if (type === 'occasions') {
+    setOccasionsPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+  } else if (type === 'customers') {
+    setCustomersPagination(prev => ({ ...prev, itemsPerPage: parseInt(itemsPerPage), currentPage: 1 }));
+  }
+};
 
   const normalizeBranchName = (branch, availableBranches = {}) => {
     if (!branch) return Object.keys(availableBranches)[0] || 'Head Office';
@@ -212,6 +240,29 @@ const SettingsPanel = () => {
     return Object.keys(errors).length === 0;
   };
   
+  const validateCustomer = () => {
+    const errors = {};
+    
+    if (!newCustomer.name?.trim()) errors.customerName = 'Customer name is required';
+    
+    // Phone validation - must be exactly 10 digits
+    if (!newCustomer.phone?.trim()) {
+      errors.customerPhone = 'Phone number is required';
+    } else if (!/^[0-9]{10}$/.test(newCustomer.phone.trim())) {
+      errors.customerPhone = 'Phone number must be exactly 10 digits';
+    }
+    
+    // Email validation (optional)
+    if (newCustomer.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCustomer.email)) {
+      errors.customerEmail = 'Invalid email format';
+    }
+    
+    if (!newCustomer.branch?.trim()) errors.customerBranch = 'Branch is required';
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  
   // ===== API FUNCTIONS =====
 
   const fetchMasterData = async () => {
@@ -224,7 +275,7 @@ const SettingsPanel = () => {
       // Fetch branches first to have the mapping available
       try {
         console.log('🏢 Fetching branches...');
-        const branchesResponse = await fetch('http://localhost:5000/api/branches', {
+        const branchesResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/branches`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -259,7 +310,7 @@ const SettingsPanel = () => {
       // Fetch user profile
       console.log('👤 Fetching user profile...');
       try {
-        const userResponse = await fetch('http://localhost:5000/api/auth/me', {
+        const usersResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/users`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -300,7 +351,7 @@ const SettingsPanel = () => {
       // Fetch brand details
       try {
         console.log('🏷️ Fetching brand details...');
-        const brandResponse = await fetch('http://localhost:5000/api/brand', {
+        const brandResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -330,7 +381,7 @@ const SettingsPanel = () => {
       // Fetch theme settings
       try {
         console.log('🎨 Fetching theme settings...');
-        const themeResponse = await fetch('http://localhost:5000/api/theme', {
+        const themeResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/theme`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -369,7 +420,7 @@ const SettingsPanel = () => {
       // Fetch items
       try {
         console.log('📦 Fetching items...');
-        const itemsResponse = await fetch('http://localhost:5000/api/items', {
+        const itemsResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/items`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -390,7 +441,7 @@ const SettingsPanel = () => {
       // Fetch occasions
       try {
         console.log('🎉 Fetching occasions...');
-        const occasionsResponse = await fetch('http://localhost:5000/api/occasions', {
+        const occasionsResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/occasions`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -407,6 +458,37 @@ const SettingsPanel = () => {
         console.warn('⚠️ Failed to fetch occasions:', error);
         setOccasions([]);
       }
+	  
+	  // Fetch customers
+try {
+  console.log('👥 Fetching customers...');
+  let customersUrl = `${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/customers`;
+  
+  // For non-admin users, fetch only their branch customers
+  if (currentUser.role !== 'admin' && currentUser.branch) {
+    const branchCode = branches[currentUser.branch];
+    if (branchCode) {
+      customersUrl += `?branch=${branchCode}`;
+    }
+  }
+  
+  const customersResponse = await fetch(customersUrl, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  
+  if (customersResponse.ok) {
+    const customersData = await customersResponse.json();
+    console.log('👥 Customers data:', customersData);
+    setCustomers(customersData || []);
+    setCustomersPagination(prev => ({ ...prev, totalItems: (customersData || []).length }));
+  } else {
+    console.warn('⚠️ Customers API response not OK:', customersResponse.status);
+    setCustomers([]);
+  }
+} catch (error) {
+  console.warn('⚠️ Failed to fetch customers:', error);
+  setCustomers([]);
+}
 
       console.log('✅ Settings data fetch completed');
       setIsLoadingData(false);
@@ -462,6 +544,8 @@ const SettingsPanel = () => {
   
   // Replace your saveBrandDetails function with this enhanced version:
 
+// Replace your saveBrandDetails function in SettingsPanel.jsx with this:
+
 const saveBrandDetails = async () => {
   if (!validateBrandDetails()) {
     showMessage('❌ Please correct the errors before saving.', 'error');
@@ -472,7 +556,7 @@ const saveBrandDetails = async () => {
     const token = localStorage.getItem('authToken');
     console.log('💾 Saving brand details:', brandDetails);
     
-    const response = await fetch('http://localhost:5000/api/brand', {
+    const response = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -489,17 +573,15 @@ const saveBrandDetails = async () => {
       setBrandDetails(updatedBrand);
       setOriginalBrandDetails(updatedBrand);
       
-      showMessage('✅ Brand details saved successfully!', 'success');
+      showMessage('✅ Brand details saved successfully! Header will update momentarily.', 'success');
       
       // Trigger a custom event to notify MainLayout to update header
       window.dispatchEvent(new CustomEvent('brandUpdated', { 
         detail: updatedBrand 
       }));
       
-      // Also reload the page after 1 second to ensure all components update
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      // Clear validation errors after successful save
+      setValidationErrors({});
       
     } else {
       const errorText = await response.text();
@@ -765,6 +847,216 @@ const saveBrandDetails = async () => {
     }
   };
   
+  const fetchCustomers = async () => {
+  try {
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      console.error('❌ No authentication token found');
+      setCustomers([]);
+      return;
+    }
+    
+    console.log('👥 Fetching customers...');
+    
+    let url = 'http://localhost:5000/api/customers';
+    
+    // For non-admin users, fetch only their branch customers
+    if (currentUser.role !== 'admin' && currentUser.branch && Object.keys(branches).length > 0) {
+      const branchCode = branches[currentUser.branch];
+      if (branchCode) {
+        url += `?branch=${branchCode}`;
+      }
+    }
+    
+    console.log('🔗 Fetching from URL:', url);
+    console.log('🔑 Using token:', token ? 'Token present' : 'No token');
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('📡 Response status:', response.status);
+    
+    if (response.ok) {
+      const customersData = await response.json();
+      console.log('👥 Customers data received:', customersData);
+      console.log('👥 Customers count:', customersData?.length || 0);
+      setCustomers(customersData || []);
+      setCustomersPagination(prev => ({ ...prev, totalItems: (customersData || []).length }));
+    } else {
+      console.error('⚠️ Customers API response not OK:', response.status);
+      const errorText = await response.text();
+      console.error('⚠️ Error details:', errorText);
+      setCustomers([]);
+    }
+  } catch (error) {
+    console.error('⚠️ Failed to fetch customers:', error);
+    setCustomers([]);
+  }
+};
+
+  const saveCustomer = async () => {
+  if (!validateCustomer()) {
+    showMessage('❌ Please correct the errors before saving.', 'error');
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      showMessage('❌ Authentication required. Please log in again.', 'error');
+      return;
+    }
+    
+    const method = editingCustomerId ? 'PUT' : 'POST';
+    const url = editingCustomerId 
+      ? `http://localhost:5000/api/customers/${editingCustomerId}`
+      : 'http://localhost:5000/api/customers';
+
+    const customerData = { 
+      ...newCustomer,
+      branchCode: branches[newCustomer.branch]
+    };
+
+    console.log('👥 Saving customer:', customerData);
+
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(customerData)
+    });
+
+    if (response.ok) {
+      const savedCustomer = await response.json();
+      
+      if (editingCustomerId) {
+        setCustomers(customers.map(c => c._id === editingCustomerId ? savedCustomer : c));
+        showMessage('✅ Customer updated successfully!', 'success');
+        setEditingCustomerId(null);
+      } else {
+        setCustomers([...customers, savedCustomer]);
+        showMessage('✅ Customer created successfully!', 'success');
+      }
+      
+      setNewCustomer({
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+        branch: currentUser.role === 'admin' ? '' : currentUser.branch
+      });
+      setValidationErrors({});
+    } else {
+      const errorText = await response.text();
+      throw new Error(`Failed to save customer: ${response.status} ${errorText}`);
+    }
+  } catch (error) {
+    console.error('❌ Error saving customer:', error);
+    showMessage(`❌ Failed to save customer: ${error.message}`, 'error');
+  }
+};
+
+  const deleteCustomer = async (customerId) => {
+  if (!window.confirm('Are you sure you want to delete this customer?')) return;
+
+  try {
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      showMessage('❌ Authentication required. Please log in again.', 'error');
+      return;
+    }
+    
+    const response = await fetch(`http://localhost:5000/api/customers/${customerId}`, {
+      method: 'DELETE',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      setCustomers(customers.filter(c => c._id !== customerId));
+      showMessage('✅ Customer deleted successfully!', 'success');
+    } else {
+      throw new Error('Failed to delete customer');
+    }
+  } catch (error) {
+    console.error('❌ Error deleting customer:', error);
+    showMessage('❌ Failed to delete customer. Please try again.', 'error');
+  }
+};
+
+  const fetchCustomerDetails = async (customerId) => {
+  try {
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      showMessage('❌ Authentication required. Please log in again.', 'error');
+      return;
+    }
+    
+    console.log('📊 Fetching customer details for:', customerId);
+    
+    const response = await fetch(`http://localhost:5000/api/customers/${customerId}/details`, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const customerData = await response.json();
+      console.log('📊 Raw customer details received:', customerData);
+      console.log('📋 Orders array:', customerData.orders);
+      console.log('📊 Raw stats object:', customerData.stats);
+      
+      // Debug the specific stats values
+      console.log('🔍 Stats breakdown:');
+      console.log('  - totalOrders:', customerData.stats?.totalOrders);
+      console.log('  - distinctBoxes:', customerData.stats?.distinctBoxes);
+      console.log('  - totalBoxes:', customerData.stats?.totalBoxes);
+      console.log('  - totalAmount:', customerData.stats?.totalAmount);
+      console.log('  - totalAmount type:', typeof customerData.stats?.totalAmount);
+      
+      // Create the stats object with debugging
+      const newStats = {
+        totalOrders: customerData.stats?.totalOrders || 0,
+        distinctBoxes: customerData.stats?.distinctBoxes || 0,
+        totalBoxes: customerData.stats?.totalBoxes || 0,
+        totalAmount: customerData.stats?.totalAmount || 0
+      };
+      
+      console.log('💾 Setting customerStats to:', newStats);
+      console.log('💰 Final totalAmount value:', newStats.totalAmount);
+      console.log('💰 Final totalAmount type:', typeof newStats.totalAmount);
+      
+      setCustomerOrders(customerData.orders || []);
+      setCustomerStats(newStats);
+      
+      // Debug what was actually set
+      setTimeout(() => {
+        console.log('✅ CustomerStats state after setting:', customerStats);
+      }, 100);
+      
+    } else {
+      throw new Error('Failed to fetch customer details');
+    }
+  } catch (error) {
+    console.error('❌ Error fetching customer details:', error);
+    showMessage('❌ Failed to fetch customer details.', 'error');
+  }
+};
+  
   // ===== EVENT HANDLERS =====
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
@@ -819,16 +1111,52 @@ const saveBrandDetails = async () => {
     setEditingOccasionId(occasion._id);
     setValidationErrors({});
   };
-
-  const cancelEdit = () => {
-    setNewUser({ username: '', password: '', branch: '', role: 'staff', displayName: '' });
-    setNewItem({ name: '', price: '', unit: 'pcs', vendor: '', category: 'General' });
-    setNewOccasion({ name: '', code: '' });
-    setEditingUserId(null);
-    setEditingItemId(null);
-    setEditingOccasionId(null);
+  
+  const handleEditCustomer = (customer) => {
+    setNewCustomer({
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email || '',
+      address: customer.address || '',
+      branch: customer.branchName || customer.branch
+    });
+    setEditingCustomerId(customer._id);
     setValidationErrors({});
   };
+
+  const handleCustomerClick = async (customer) => {
+    setSelectedCustomer(customer);
+    await fetchCustomerDetails(customer._id);
+  };
+
+  const closeCustomerDetails = () => {
+  setSelectedCustomer(null);
+  setCustomerOrders([]);
+  setCustomerStats({
+    totalOrders: 0,
+    distinctBoxes: 0,
+    totalBoxes: 0,
+    totalAmount: 0
+  });
+};
+
+  const cancelEdit = () => {
+  setNewUser({ username: '', password: '', branch: '', role: 'staff', displayName: '' });
+  setNewItem({ name: '', price: '', unit: 'pcs', vendor: '', category: 'General' });
+  setNewOccasion({ name: '', code: '' });
+  setNewCustomer({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    branch: currentUser.role === 'admin' ? '' : currentUser.branch
+  });
+  setEditingUserId(null);
+  setEditingItemId(null);
+  setEditingOccasionId(null);
+  setEditingCustomerId(null);
+  setValidationErrors({});
+};
   
   // ===== EFFECTS =====
   useEffect(() => {
@@ -852,6 +1180,16 @@ const saveBrandDetails = async () => {
       }
     }
   }, [branches, currentUser.branch]);
+  
+  // Update newCustomer branch when currentUser changes
+useEffect(() => {
+  if (currentUser.role !== 'admin' && currentUser.branch) {
+    setNewCustomer(prev => ({
+      ...prev,
+      branch: currentUser.branch
+    }));
+  }
+}, [currentUser.role, currentUser.branch]);
   
   // ===== RENDER =====
   
@@ -1472,6 +1810,277 @@ const saveBrandDetails = async () => {
           </PaginationComponent>
         </div>
       </div>
+	  
+	  {/* Customers Management Section */}
+<div className="card">
+  <h3>👥 Customers Management</h3>
+  
+  {/* Add/Edit Customer Form */}
+  <div style={{ marginBottom: '30px' }}>
+    <h4>{editingCustomerId ? '✏️ Edit Customer' : '➕ Add New Customer'}</h4>
+    <div className="form-grid-3">
+      <div className="form-group">
+        <label>Customer Name<span className="required">*</span></label>
+        <input 
+          value={newCustomer.name} 
+          onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+          className={validationErrors.customerName ? 'error-field' : ''}
+          placeholder="Enter customer name"
+        />
+        {validationErrors.customerName && <div className="error-message">❌ {validationErrors.customerName}</div>}
+      </div>
+
+      <div className="form-group">
+        <label>Phone Number<span className="required">*</span></label>
+        <input 
+          value={newCustomer.phone} 
+          onChange={(e) => {
+            const value = e.target.value;
+            const numbersOnly = value.replace(/[^0-9]/g, '').slice(0, 10);
+            
+            setNewCustomer({ ...newCustomer, phone: numbersOnly });
+            
+            if (numbersOnly.length === 10) {
+              setValidationErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors.customerPhone;
+                return newErrors;
+              });
+            } else if (numbersOnly.length > 0) {
+              setValidationErrors(prev => ({
+                ...prev,
+                customerPhone: 'Phone number must be exactly 10 digits'
+              }));
+            } else {
+              setValidationErrors(prev => ({
+                ...prev,
+                customerPhone: 'Phone number is required'
+              }));
+            }
+          }}
+          className={validationErrors.customerPhone ? 'error-field' : ''}
+          placeholder="Enter 10-digit phone number"
+          maxLength={10}
+        />
+        {validationErrors.customerPhone && <div className="error-message">❌ {validationErrors.customerPhone}</div>}
+      </div>
+
+      <div className="form-group">
+        <label>Email</label>
+        <input 
+          type="email"
+          value={newCustomer.email} 
+          onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+          className={validationErrors.customerEmail ? 'error-field' : ''}
+          placeholder="Enter email address"
+        />
+        {validationErrors.customerEmail && <div className="error-message">❌ {validationErrors.customerEmail}</div>}
+      </div>
+
+      {currentUser.role === 'admin' && (
+        <div className="form-group">
+          <label>Branch<span className="required">*</span></label>
+          <select 
+            value={newCustomer.branch} 
+            onChange={(e) => setNewCustomer({ ...newCustomer, branch: e.target.value })}
+            className={validationErrors.customerBranch ? 'error-field' : ''}
+          >
+            <option value="">Select Branch</option>
+            {Object.keys(branches).map((branchName) => (
+              <option key={branchName} value={branchName}>{branchName}</option>
+            ))}
+          </select>
+          {validationErrors.customerBranch && <div className="error-message">❌ {validationErrors.customerBranch}</div>}
+        </div>
+      )}
+    </div>
+
+    <div className="form-group">
+      <label>Address</label>
+      <textarea 
+        value={newCustomer.address} 
+        onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+        placeholder="Enter customer address"
+        rows="2"
+      />
+    </div>
+
+    <div className="button-group">
+      <button onClick={saveCustomer}>💾 {editingCustomerId ? 'Update Customer' : 'Add Customer'}</button>
+      {editingCustomerId && (
+        <button onClick={cancelEdit} className="btn-secondary">❌ Cancel</button>
+      )}
+    </div>
+  </div>
+
+  {/* Customers List */}
+  <div>
+    <h4>📋 Current Customers ({customers.length})</h4>
+    <PaginationComponent type="customers" data={customers} pagination={customersPagination}>
+      {(paginatedCustomers) => (
+        paginatedCustomers.length > 0 ? (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Customer Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Address</th>
+                {currentUser.role === 'admin' && <th>Branch</th>}
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedCustomers.map((customer) => (
+                <tr key={customer._id}>
+                  <td>
+                    <button 
+                      onClick={() => handleCustomerClick(customer)}
+                      className="customer-name-button"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#49488D',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {customer.name}
+                    </button>
+                  </td>
+                  <td>{customer.phone}</td>
+                  <td>{customer.email || 'N/A'}</td>
+                  <td>{customer.address ? customer.address.substring(0, 50) + (customer.address.length > 50 ? '...' : '') : 'N/A'}</td>
+                  {currentUser.role === 'admin' && <td>{customer.branchName || customer.branch}</td>}
+                  <td>
+                    <button 
+                      onClick={() => handleEditCustomer(customer)}
+                      className="btn-secondary"
+                      style={{ fontSize: '12px', padding: '6px 10px', marginRight: '5px' }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button 
+                      onClick={() => deleteCustomer(customer._id)}
+                      className="btn-danger"
+                      style={{ fontSize: '12px', padding: '6px 10px' }}
+                    >
+                      🗑️ Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p>No customers found. Add some customers to get started.</p>
+        )
+      )}
+    </PaginationComponent>
+  </div>
+</div>
+
+{/* Customer Details Modal */}
+{selectedCustomer && (
+  <div className="modal-overlay" onClick={closeCustomerDetails}>
+    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh' }}>
+      <div className="modal-header">
+        <h3>📊 Customer Details: {selectedCustomer.name}</h3>
+        <button className="modal-close" onClick={closeCustomerDetails}>×</button>
+      </div>
+      
+      <div style={{ marginBottom: '20px' }}>
+        <div className="customer-stats" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', 
+          gap: '15px',
+          marginBottom: '20px'
+        }}>
+          <div className="stat-card" style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <h4 style={{ margin: '0 0 5px 0', color: '#49488D' }}>📦 Total Orders</h4>
+            <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>{customerStats.totalOrders || 0}</p>
+          </div>
+          <div className="stat-card" style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <h4 style={{ margin: '0 0 5px 0', color: '#49488D' }}>🎁 Distinct Boxes</h4>
+            <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>{customerStats.distinctBoxes || 0}</p>
+          </div>
+          <div className="stat-card" style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <h4 style={{ margin: '0 0 5px 0', color: '#49488D' }}>📊 Total Boxes</h4>
+            <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>{customerStats.totalBoxes || 0}</p>
+          </div>
+          <div className="stat-card" style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <h4 style={{ margin: '0 0 5px 0', color: '#49488D' }}>💰 Total Spent</h4>
+            <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>
+              ₹{(customerStats.totalAmount || 0).toLocaleString()}
+            </p>
+          </div>
+        </div>
+        
+        <div className="customer-info" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+          gap: '15px',
+          marginBottom: '20px',
+          padding: '15px',
+          background: '#f1f3f4',
+          borderRadius: '8px'
+        }}>
+          <div><strong>📞 Phone:</strong> {selectedCustomer.phone}</div>
+          <div><strong>📧 Email:</strong> {selectedCustomer.email || 'N/A'}</div>
+          <div><strong>🏢 Branch:</strong> {selectedCustomer.branchName || selectedCustomer.branch}</div>
+          <div><strong>📍 Address:</strong> {selectedCustomer.address || 'N/A'}</div>
+        </div>
+      </div>
+      
+      <div>
+        <h4>📋 Order History ({customerOrders.length} orders)</h4>
+        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {customerOrders.length > 0 ? (
+            <table className="data-table" style={{ fontSize: '14px' }}>
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Date</th>
+                  <th>Items</th>
+                  <th>Total Amount</th>
+                  <th>Status</th>
+                  <th>Branch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerOrders.map((order) => (
+                  <tr key={order._id}>
+                    <td>{order.orderNumber || order._id.slice(-6)}</td>
+                    <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                    <td>{order.boxes?.length || 0} boxes ({order.totalBoxCount || 0} total)</td>
+                    <td>₹{(order.grandTotal || 0).toLocaleString()}</td>
+                    <td>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        backgroundColor: order.status === 'completed' ? '#d4edda' : 
+                                       order.status === 'saved' ? '#fff3cd' : '#f8d7da',
+                        color: order.status === 'completed' ? '#155724' : 
+                               order.status === 'saved' ? '#856404' : '#721c24'
+                      }}>
+                        {order.status || 'pending'}
+                      </span>
+                    </td>
+                    <td>{order.branch || order.branchName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic' }}>No orders found for this customer.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* System Information Section */}
       <div className="card">
@@ -1505,6 +2114,10 @@ const saveBrandDetails = async () => {
             <strong>Total Users:</strong><br />
             {users.length}
           </div>
+		  <div className="system-info-item">
+  <strong>Total Customers:</strong><br />
+  {customers.length}
+</div>
           <div className="system-info-item">
             <strong>Total Branches:</strong><br />
             {Object.keys(branches).length}

@@ -1,13 +1,515 @@
-// Update your App.js to handle loading state:
-
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import LoginPage from './components/LoginPage';
-import MainLayout from './components/MainLayout';
+import OrderForm from './components/OrderForm';
+import OrderTabs from './components/OrderTabs';
+import OrderSummary from './components/OrderSummary';
+import SettingsPanel from './components/SettingsPanel';
+import { getApiUrl } from './auth/apiConfig';
 
+// Main Layout Component with Navigation
+const MainLayout = () => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const auth = useAuth();
+
+  // Handle responsive design
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsMobileMenuOpen(false);
+        document.body.style.overflow = '';
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Toggle mobile menu
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+    document.body.style.overflow = !isMobileMenuOpen ? 'hidden' : '';
+  };
+
+  // Handle navigation
+  const handleNavigation = (path) => {
+    navigate(path);
+    if (isMobile) {
+      setIsMobileMenuOpen(false);
+      document.body.style.overflow = '';
+    }
+  };
+
+  return (
+    <>
+      {/* Header */}
+      <Header 
+        isMobile={isMobile}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={toggleMobileMenu}
+        user={auth.user}
+        onLogout={auth.logout}
+        location={location}
+        navigate={navigate}
+      />
+
+      {/* Mobile Navigation */}
+      <MobileNavigation 
+        isOpen={isMobileMenuOpen}
+        currentPath={location.pathname}
+        onNavigate={handleNavigation}
+        user={auth.user}
+        onLogout={auth.logout}
+      />
+
+      {/* Main Content */}
+      <main className={`app-main ${isMobile ? 'mobile' : ''}`}>
+        {renderCurrentPage(location.pathname)}
+      </main>
+    </>
+  );
+};
+
+// Header Component
+const Header = ({ isMobile, isMobileMenuOpen, onToggleMobileMenu, user, onLogout, location, navigate }) => {
+  return (
+    <header className={`app-header ${isMobile ? 'mobile' : ''}`}>
+      <div className="header-content">
+        <div className="header-left">
+          {/* Hamburger Menu (mobile only) */}
+          {isMobile && (
+            <button 
+              className={`hamburger-menu ${isMobileMenuOpen ? 'active' : ''}`}
+              onClick={onToggleMobileMenu}
+              aria-label="Toggle menu"
+            >
+              <span className="hamburger-line"></span>
+              <span className="hamburger-line"></span>
+              <span className="hamburger-line"></span>
+            </button>
+          )}
+          
+          {/* Logo/Brand */}
+          <div className="brand-info">
+            <h3 style={{ margin: 0, color: 'var(--theme-color)' }}>OrderApp</h3>
+          </div>
+        </div>
+        
+        {/* Desktop Navigation */}
+        {!isMobile && (
+          <div className="header-center">
+            <DesktopNavigation currentPath={location.pathname} onNavigate={navigate} user={user} />
+          </div>
+        )}
+        
+        <div className="header-right">
+          <UserActions user={user} onLogout={onLogout} isMobile={isMobile} />
+        </div>
+      </div>
+    </header>
+  );
+};
+
+// Desktop Navigation Component
+const DesktopNavigation = ({ currentPath, onNavigate, user }) => {
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', path: '/' },
+    { id: 'current-order', label: 'New Order', path: '/current-order' },
+    { id: 'orders', label: 'Orders', path: '/orders' },
+    { id: 'summary', label: 'Summary', path: '/summary' },
+  ];
+
+  // Add settings if user is admin
+  if (user?.role === 'admin') {
+    navItems.push({ id: 'settings', label: 'Settings', path: '/settings' });
+  }
+
+  return (
+    <nav className="app-nav">
+      {navItems.map(item => (
+        <button
+          key={item.id}
+          className={`nav-item ${currentPath === item.path ? 'active' : ''}`}
+          onClick={() => onNavigate(item.path)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+// Mobile Navigation Component
+const MobileNavigation = ({ isOpen, currentPath, onNavigate, user, onLogout }) => {
+  const navItems = [
+    { id: 'dashboard', label: '🏠 Dashboard', path: '/' },
+    { id: 'current-order', label: '📝 New Order', path: '/current-order' },
+    { id: 'orders', label: '📋 Orders', path: '/orders' },
+    { id: 'summary', label: '📊 Summary', path: '/summary' },
+  ];
+
+  // Add settings if user is admin
+  if (user?.role === 'admin') {
+    navItems.push({ id: 'settings', label: '⚙️ Settings', path: '/settings' });
+  }
+
+  return (
+    <nav className={`mobile-nav ${isOpen ? 'active' : ''}`}>
+      {/* User Info */}
+      <div className="mobile-user-info" style={{ 
+        padding: 'var(--spacing-md)', 
+        borderBottom: '1px solid var(--border-color)',
+        marginBottom: 'var(--spacing-md)'
+      }}>
+        <div className="user-info-badge">
+          👤 {user?.displayName || user?.username || 'User'}
+          {user?.role === 'admin' && <span className="badge badge-primary ml-2">Admin</span>}
+        </div>
+        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-color-muted)' }}>
+          Branch: {user?.branchName || user?.branch || 'Main'}
+        </div>
+      </div>
+
+      {/* Navigation Items */}
+      {navItems.map(item => (
+        <button
+          key={item.id}
+          className={`mobile-nav-item ${currentPath === item.path ? 'active' : ''}`}
+          onClick={() => onNavigate(item.path)}
+        >
+          {item.label}
+        </button>
+      ))}
+      
+      {/* Logout */}
+      <button
+        className="mobile-nav-item"
+        onClick={onLogout}
+        style={{ 
+          marginTop: 'var(--spacing-lg)',
+          borderTop: '1px solid var(--border-color)',
+          paddingTop: 'var(--spacing-md)',
+          color: 'var(--error-color)'
+        }}
+      >
+        🚪 Logout
+      </button>
+    </nav>
+  );
+};
+
+// User Actions Component
+const UserActions = ({ user, onLogout, isMobile }) => {
+  if (isMobile) {
+    return (
+      <div className="user-info-badge">
+        {user?.displayName?.charAt(0) || user?.username?.charAt(0) || 'U'}
+      </div>
+    );
+  }
+
+  return (
+    <div className="button-group">
+      <div className="user-info-badge">
+        👤 {user?.displayName || user?.username || 'User'}
+        {user?.role === 'admin' && <span className="badge badge-primary">Admin</span>}
+      </div>
+      <button className="btn btn-secondary btn-sm" onClick={onLogout}>
+        Logout
+      </button>
+    </div>
+  );
+};
+
+// Render current page content
+const renderCurrentPage = (pathname) => {
+  switch (pathname) {
+    case '/':
+      return <Dashboard />;
+    case '/current-order':
+      return <OrderForm />;
+    case '/orders':
+      return <OrderTabs />;
+    case '/summary':
+      return <OrderSummary />;
+    case '/settings':
+      return <SettingsPanel />;
+    default:
+      return <Dashboard />;
+  }
+};
+
+// Dashboard Component with Database Integration
+const Dashboard = () => {
+  const [dateFilter, setDateFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [dashboardData, setDashboardData] = useState({
+    totalOrders: 0,
+    totalBoxes: 0,
+    totalCustomers: 0,
+    totalRevenue: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch dashboard data from database
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Build query parameters based on date filter
+      const params = new URLSearchParams();
+      params.append('filter', dateFilter);
+      
+      if (dateFilter === 'custom' && startDate && endDate) {
+        params.append('startDate', startDate);
+        params.append('endDate', endDate);
+      }
+
+      // Get API base URL using our local function
+      const apiBaseUrl = getApiUrl();
+      const token = localStorage.getItem('authToken');
+      
+      // API call to fetch dashboard metrics
+      const response = await fetch(`${apiBaseUrl}/api/dashboard/metrics?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch dashboard data: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      setDashboardData({
+        totalOrders: data.totalOrders || 0,
+        totalBoxes: data.totalBoxes || 0,
+        totalCustomers: data.totalCustomers || 0,
+        totalRevenue: data.totalRevenue || 0
+      });
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err.message);
+      // Fallback to demo data on error
+      setDashboardData({
+        totalOrders: 247,
+        totalBoxes: 1856,
+        totalCustomers: 89,
+        totalRevenue: 15420
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch data on component mount and when filters change
+  useEffect(() => {
+    fetchDashboardData();
+  }, [dateFilter, startDate, endDate]);
+
+  // Handle date filter change
+  const handleDateFilterChange = (newFilter) => {
+    setDateFilter(newFilter);
+    if (newFilter !== 'custom') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <h2 className="card-title">Dashboard</h2>
+        <div className="button-group">
+          <select 
+            value={dateFilter} 
+            onChange={(e) => handleDateFilterChange(e.target.value)}
+            className="form-select"
+            style={{ marginRight: '10px' }}
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Range</option>
+          </select>
+          {dateFilter === 'custom' && (
+            <>
+              <input 
+                type="date" 
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="form-input"
+                style={{ marginRight: '10px', width: '150px' }}
+                placeholder="Start Date"
+              />
+              <input 
+                type="date" 
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="form-input"
+                style={{ width: '150px' }}
+                placeholder="End Date"
+              />
+            </>
+          )}
+          <button 
+            onClick={fetchDashboardData}
+            className="btn btn-sm"
+            style={{ marginLeft: '10px' }}
+            disabled={loading}
+          >
+            {loading ? 'Refreshing...' : '🔄 Refresh'}
+          </button>
+        </div>
+      </div>
+      <div className="card-body">
+        {error && (
+          <div className="alert alert-warning" style={{ 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffeaa7',
+            borderRadius: '4px',
+            color: '#856404'
+          }}>
+            <strong>⚠️ API Connection Issue:</strong> {error}. Showing demo data below.
+          </div>
+        )}
+        
+        {loading ? (
+          <div className="text-center" style={{ padding: '40px' }}>
+            <p>Loading dashboard data...</p>
+          </div>
+        ) : (
+          <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+            <div className="card" style={{ border: '2px solid #49488D' }}>
+              <div className="card-body text-center" style={{ 
+                backgroundColor: '#49488D', 
+                color: 'white',
+                padding: '30px 20px'
+              }}>
+                <h3 style={{ 
+                  color: 'white', 
+                  marginBottom: '15px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600'
+                }}>Total Orders</h3>
+                <p style={{ 
+                  fontSize: '2.5rem', 
+                  fontWeight: 'bold',
+                  color: 'white',
+                  margin: 0,
+                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
+                }}>
+                  {dashboardData.totalOrders.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="card" style={{ border: '2px solid #49488D' }}>
+              <div className="card-body text-center" style={{ 
+                backgroundColor: '#49488D', 
+                color: 'white',
+                padding: '30px 20px'
+              }}>
+                <h3 style={{ 
+                  color: 'white', 
+                  marginBottom: '15px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600'
+                }}>Total Boxes</h3>
+                <p style={{ 
+                  fontSize: '2.5rem', 
+                  fontWeight: 'bold',
+                  color: 'white',
+                  margin: 0,
+                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
+                }}>
+                  {dashboardData.totalBoxes.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="card" style={{ border: '2px solid #49488D' }}>
+              <div className="card-body text-center" style={{ 
+                backgroundColor: '#49488D', 
+                color: 'white',
+                padding: '30px 20px'
+              }}>
+                <h3 style={{ 
+                  color: 'white', 
+                  marginBottom: '15px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600'
+                }}>Total Customers</h3>
+                <p style={{ 
+                  fontSize: '2.5rem', 
+                  fontWeight: 'bold',
+                  color: 'white',
+                  margin: 0,
+                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
+                }}>
+                  {dashboardData.totalCustomers.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="card" style={{ border: '2px solid #49488D' }}>
+              <div className="card-body text-center" style={{ 
+                backgroundColor: '#49488D', 
+                color: 'white',
+                padding: '30px 20px'
+              }}>
+                <h3 style={{ 
+                  color: 'white', 
+                  marginBottom: '15px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600'
+                }}>Total Revenue</h3>
+                <p style={{ 
+                  fontSize: '2.5rem', 
+                  fontWeight: 'bold',
+                  color: 'white',
+                  margin: 0,
+                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
+                }}>
+                  ${dashboardData.totalRevenue.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div className="card" style={{ marginTop: '20px' }}>
+          <div className="card-header">
+            <h3>Quick Actions</h3>
+          </div>
+          <div className="card-body">
+            <div className="button-group">
+              <button className="btn">Create New Order</button>
+              <button className="btn btn-secondary">View Reports</button>
+              <button className="btn btn-secondary">Manage Inventory</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// App Content Component with Routing
 const AppContent = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   // Show loading spinner while checking authentication
   if (isLoading) {
@@ -37,10 +539,32 @@ const AppContent = () => {
         path="/" 
         element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
       />
+      <Route 
+        path="/current-order" 
+        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
+      />
+      <Route 
+        path="/orders" 
+        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
+      />
+      <Route 
+        path="/summary" 
+        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
+      />
+      
+      {/* Protected Settings route - only accessible by admin */}
+      <Route 
+        path="/settings" 
+        element={
+          !isAuthenticated ? <Navigate to="/login" /> :
+          (user?.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />)
+        } 
+      />
     </Routes>
   );
 };
 
+// Main App Component
 function App() {
   return (
     <AuthProvider>

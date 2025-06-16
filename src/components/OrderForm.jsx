@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { FaEdit } from 'react-icons/fa';
-import './OrderForm.css';
+// import './OrderForm.css';
+import '../appResponsive.css';
 // Add this line after your existing imports
 console.log('🔧 UUID Test:', uuidv4()); // Test if UUID is working
 
@@ -2134,7 +2135,7 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
     
     {/* Floating Order Summary - Only shown for multiple boxes */}
     {hasMultipleBoxes && (
-      <div className="order-float-summary" style={{ height: isOrderSummaryMinimized ? 'auto' : 'unset' }}>
+      <div className="floating-summary" style={{ height: isOrderSummaryMinimized ? 'auto' : 'unset' }}>
         <div className="summary-header">
           <h4 style={{ margin: 0 }}>
             Order Summary 
@@ -2258,74 +2259,88 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
         <div className="form-group">
           <label>Name<span className="required">*</span></label>
           <input 
-            name="name" 
-            value={customer.name} 
-            onChange={handleCustomerChange} 
-            className={validationErrors.name ? 'error-field' : ''}
-            placeholder="Enter full name"
-          />
+  name="name" 
+  value={customer.name} 
+  onChange={handleCustomerChange} 
+  className={validationErrors.name ? 'error-field' : ''}
+  placeholder="Enter full name"
+  autoComplete="name"
+  inputMode="text"
+/>
           {validationErrors.name && <div className="error-message">{validationErrors.name}</div>}
         </div>
           <div className="form-group">
             <label>Phone<span className="required">*</span></label>
             <input 
-              name="phone" 
-              value={customer.phone} 
-              onChange={handleCustomerChange} 
-              className={validationErrors.phone ? 'error-field' : ''}
-              placeholder="10-digit mobile number"
-            />
+  name="phone" 
+  value={customer.phone} 
+  onChange={handleCustomerChange} 
+  className={validationErrors.phone ? 'error-field' : ''}
+  placeholder="10-digit mobile number"
+  autoComplete="tel"
+  inputMode="numeric"
+/>
             {validationErrors.phone && <div className="error-message">{validationErrors.phone}</div>}
           </div>
           <div className="form-group">
             <label>Email</label>
             <input 
-              name="email" 
-              value={customer.email} 
-              onChange={handleCustomerChange}
-              className={validationErrors.email ? 'error-field' : ''} 
-              placeholder="Email address"
-            />
+  name="email" 
+  value={customer.email} 
+  onChange={handleCustomerChange}
+  className={validationErrors.email ? 'error-field' : ''} 
+  placeholder="Email address"
+  autoComplete="email"
+  inputMode="email"
+/>
             {validationErrors.email && <div className="error-message">{validationErrors.email}</div>}
           </div>
           <div className="form-group" style={{ gridColumn: "1 / -1" }}>
             <label>Address</label>
             <input 
-              name="address" 
-              value={customer.address} 
-              onChange={handleCustomerChange} 
-              placeholder="Street address"
-            />
+  name="address" 
+  value={customer.address} 
+  onChange={handleCustomerChange} 
+  placeholder="Street address"
+  autoComplete="street-address"
+  inputMode="text"
+/>
           </div>
           <div className="form-group">
             <label>PIN Code</label>
             <input 
-              name="pincode" 
-              value={customer.pincode} 
-              onChange={handleCustomerChange}
-              placeholder="6-digit PIN code"
-              maxLength={6}
-              className={validationErrors.pincode ? 'error-field' : ''}
-            />
+  name="pincode" 
+  value={customer.pincode} 
+  onChange={handleCustomerChange}
+  placeholder="6-digit PIN code"
+  maxLength={6}
+  className={validationErrors.pincode ? 'error-field' : ''}
+  autoComplete="postal-code"
+  inputMode="numeric"
+/>
             {validationErrors.pincode && <div className="error-message">{validationErrors.pincode}</div>}
           </div>
           <div className="form-group">
             <label>City</label>
             <input 
-              name="city" 
-              value={customer.city} 
-              onChange={handleCustomerChange}
-              placeholder="City" 
-            />
+  name="city" 
+  value={customer.city} 
+  onChange={handleCustomerChange}
+  placeholder="City"
+  autoComplete="address-level2"
+  inputMode="text"
+/>
           </div>
           <div className="form-group">
             <label>State</label>
             <input 
-              name="state" 
-              value={customer.state} 
-              onChange={handleCustomerChange}
-              placeholder="State"
-            />
+  name="state" 
+  value={customer.state} 
+  onChange={handleCustomerChange}
+  placeholder="State"
+  autoComplete="address-level1"
+  inputMode="text"
+/>
           </div>
         </div>
       </div>
@@ -2444,15 +2459,17 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
     
     {/* Number Field - Editable for both admin and staff when edit is enabled */}
     <input
-      name="orderNumber"
-      value={orderInfo.orderNumber}
-      onChange={handleOrderChange}
-      disabled={!editOrderNumber}
-      style={{ width: '80px' }}
-      className={orderNumberError ? 'error-field' : ''}
-      title="Order Number"
-      placeholder="001"
-    />
+  name="orderNumber"
+  value={orderInfo.orderNumber}
+  onChange={handleOrderChange}
+  disabled={!editOrderNumber}
+  style={{ width: '80px' }}
+  className={orderNumberError ? 'error-field' : ''}
+  title="Order Number"
+  placeholder="001"
+  autoComplete="off"
+  inputMode="numeric"
+/>
     
     <FaEdit 
       style={{ cursor: 'pointer' }} 
@@ -2473,15 +2490,33 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
 </div>
           <div className="form-group">
             <label>Order Date</label>
-            <input type="date" name="orderDate" value={orderInfo.orderDate} onChange={handleOrderChange} />
+            <input 
+  type="date" 
+  name="orderDate" 
+  value={orderInfo.orderDate} 
+  onChange={handleOrderChange}
+  autoComplete="off"
+/>
           </div>
           <div className="form-group">
             <label>Delivery Date</label>
-            <input type="date" name="deliveryDate" value={orderInfo.deliveryDate} onChange={handleOrderChange} />
+            <input 
+  type="date" 
+  name="deliveryDate" 
+  value={orderInfo.deliveryDate} 
+  onChange={handleOrderChange}
+  autoComplete="off"
+/>
           </div>
           <div className="form-group">
             <label>Delivery Time</label>
-            <input type="time" name="deliveryTime" value={orderInfo.deliveryTime} onChange={handleOrderChange} />
+            <input 
+  type="time" 
+  name="deliveryTime" 
+  value={orderInfo.deliveryTime} 
+  onChange={handleOrderChange}
+  autoComplete="off"
+/>
           </div>
         </div>
       </div>
@@ -2544,25 +2579,27 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
           </select>
         ) : (
           <input
-            type="text"
-            placeholder="Enter custom item name"
-            value={item.name === '__custom__' ? '' : item.name || ''}
-            onChange={(e) => {
-              const newValue = e.target.value;
-              const updatedBoxes = boxes.map(b => {
-                if (b.id !== box.id) return b;
-                const updatedItems = b.items.map(i => {
-                  if (i.id !== item.id) return i;
-                  return { ...i, name: newValue, customName: newValue.length > 0 };
-                });
-                return { ...b, items: updatedItems };
-              });
-              setBoxes(updatedBoxes);
-            }}
-            style={{ flex: 2 }}
-            className={(!item.customName || !item.name) ? 'error-field' : ''}
-            autoFocus
-          />
+  type="text"
+  placeholder="Enter custom item name"
+  value={item.name === '__custom__' ? '' : item.name || ''}
+  onChange={(e) => {
+    const newValue = e.target.value;
+    const updatedBoxes = boxes.map(b => {
+      if (b.id !== box.id) return b;
+      const updatedItems = b.items.map(i => {
+        if (i.id !== item.id) return i;
+        return { ...i, name: newValue, customName: newValue.length > 0 };
+      });
+      return { ...b, items: updatedItems };
+    });
+    setBoxes(updatedBoxes);
+  }}
+  style={{ flex: 2 }}
+  className={(!item.customName || !item.name) ? 'error-field' : ''}
+  autoFocus
+  autoComplete="off"
+  inputMode="text"
+/>
         )}
         {/* Quantity Input */}
         <input
@@ -2612,24 +2649,30 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
   }}
   style={{ flex: 1, width: '60px' }}
   key={`qty-${box.id}-${item.id}`}
+  autoComplete="off"
+  inputMode="numeric"
 />
         {/* Price Input */}
         {item.name === '__custom__' ? (
           <input
-            type="number"
-            placeholder="Price"
-            value={item.price || 0}
-            onChange={(e) => handleItemPriceChange(box.id, item.id, e.target.value)}
-            style={{ flex: 1 }}
-          />
+  type="number"
+  placeholder="Price"
+  value={item.price || 0}
+  onChange={(e) => handleItemPriceChange(box.id, item.id, e.target.value)}
+  style={{ flex: 1 }}
+  autoComplete="off"
+  inputMode="decimal"
+/>
         ) : (
           <input
-            type="number"
-            placeholder="Price"
-            value={item.price || 0}
-            style={{ flex: 1, backgroundColor: '#f0f0f0' }}
-            readOnly
-          />
+  type="number"
+  placeholder="Price"
+  value={item.price || 0}
+  onChange={(e) => handleItemPriceChange(box.id, item.id, e.target.value)}
+  style={{ flex: 1 }}
+  autoComplete="off"
+  inputMode="decimal"
+/>
         )}
         {/* Unit */}
         {item.name === '__custom__' ? (
@@ -2677,12 +2720,14 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
   <label>Box Count: </label>
   <input
-    type="number"
-    min="1"
-    value={box.boxCount || 1}
-    onChange={(e) => handleBoxCountChange(box.id, e.target.value)}
-    style={{ width: '80px' }}
-  />
+  type="number"
+  min="1"
+  value={box.boxCount || 1}
+  onChange={(e) => handleBoxCountChange(box.id, e.target.value)}
+  style={{ width: '80px' }}
+  autoComplete="off"
+  inputMode="numeric"
+/>
   <span>boxes</span>
 </div>
       <p>Box Subtotal: ₹{box.items.reduce((sum, i) => sum + (i.amount || 0), 0) * (box.boxCount || 1)}</p>
@@ -2694,11 +2739,13 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
         )}
         <label>Discount: </label>
         <input
-          type="number"
-          value={box.discount}
-          onChange={(e) => handleBoxDiscountChange(box.id, Number(e.target.value))}
-          style={{ width: '100px' }}
-        />
+  type="number"
+  value={box.discount}
+  onChange={(e) => handleBoxDiscountChange(box.id, Number(e.target.value))}
+  style={{ width: '100px' }}
+  autoComplete="off"
+  inputMode="decimal"
+/>
       </div>
       <div><strong>Total: ₹{(calculateBoxTotal(box)).toLocaleString()}</strong></div>
       <button 
@@ -2719,47 +2766,49 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
             <h4>Extra Discount</h4>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               <input
-                type="number"
-                value={extraDiscount.value}
-                max={extraDiscount.type === 'percentage' ? 100 : grandTotal}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
+  type="number"
+  value={extraDiscount.value}
+  max={extraDiscount.type === 'percentage' ? 100 : grandTotal}
+  onChange={(e) => {
+    const value = Number(e.target.value);
 
-                  if (extraDiscount.type === 'percentage') {
-                    if (value > 100) {
-                      setExtraDiscount(prev => ({ ...prev, value: 100 }));
-                      setMessage('⚠️ Percentage discount cannot exceed 100%. It has been reset to 100%.');
-                      return;
-                    }
-                    if (value < 0) {
-                      setExtraDiscount(prev => ({ ...prev, value: 0 }));
-                      setMessage('⚠️ Discount cannot be negative. Reset to 0.');
-                      return;
-                    }
-                  }
+    if (extraDiscount.type === 'percentage') {
+      if (value > 100) {
+        setExtraDiscount(prev => ({ ...prev, value: 100 }));
+        setMessage('⚠️ Percentage discount cannot exceed 100%. It has been reset to 100%.');
+        return;
+      }
+      if (value < 0) {
+        setExtraDiscount(prev => ({ ...prev, value: 0 }));
+        setMessage('⚠️ Discount cannot be negative. Reset to 0.');
+        return;
+      }
+    }
 
-                  if (extraDiscount.type === 'value') {
-                    if (value > grandTotal) {
-                      setExtraDiscount(prev => ({ ...prev, value: grandTotal }));
-                      setMessage('⚠️ Discount cannot exceed order total. Adjusted to max allowed.');
-                      return;
-                    }
-                    if (value < 0) {
-                      setExtraDiscount(prev => ({ ...prev, value: 0 }));
-                      setMessage('⚠️ Discount cannot be negative. Reset to 0.');
-                      return;
-                    }
-                  }
+    if (extraDiscount.type === 'value') {
+      if (value > grandTotal) {
+        setExtraDiscount(prev => ({ ...prev, value: grandTotal }));
+        setMessage('⚠️ Discount cannot exceed order total. Adjusted to max allowed.');
+        return;
+      }
+      if (value < 0) {
+        setExtraDiscount(prev => ({ ...prev, value: 0 }));
+        setMessage('⚠️ Discount cannot be negative. Reset to 0.');
+        return;
+      }
+    }
 
-                  setMessage('');
-                  setExtraDiscount(prev => ({ ...prev, value }));
-                }}
-                style={{
-                  flex: 2,
-                  border: message.includes('Discount') ? '1px solid #ea5454' : '',
-                  backgroundColor: message.includes('Discount') ? '#ffeeee' : ''
-                }}
-              />
+    setMessage('');
+    setExtraDiscount(prev => ({ ...prev, value }));
+  }}
+  style={{
+    flex: 2,
+    border: message.includes('Discount') ? '1px solid #ea5454' : '',
+    backgroundColor: message.includes('Discount') ? '#ffeeee' : ''
+  }}
+  autoComplete="off"
+  inputMode="decimal"
+/>
 
               <select
                 value={extraDiscount.type}
@@ -2781,10 +2830,12 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
           <div style={{ flex: 1 }}>
             <h4>Advance Paid</h4>
             <input
-              type="number"
-              value={advancePaid}
-              onChange={(e) => setAdvancePaid(Number(e.target.value))}
-            />
+  type="number"
+  value={advancePaid}
+  onChange={(e) => setAdvancePaid(Number(e.target.value))}
+  autoComplete="off"
+  inputMode="decimal"
+/>
           </div>
         </div>
         
@@ -2848,24 +2899,11 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
   </div>
 )}
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button 
-              onClick={(e) => handleSubmit(e, 'saved')} 
-              disabled={isCheckingOrderNumber || isLoadingData}
-              style={{ opacity: isCheckingOrderNumber ? 0.6 : 1, cursor: isCheckingOrderNumber ? 'not-allowed' : 'pointer' }}
-            >
-              💾 Save Order
-            </button>
-            <button 
-              onClick={(e) => handleSubmit(e, 'held')} 
-              className="btn-secondary"
-              disabled={isCheckingOrderNumber || isLoadingData}
-              style={{ opacity: isCheckingOrderNumber ? 0.6 : 1, cursor: isCheckingOrderNumber ? 'not-allowed' : 'pointer' }}
-            >
-              ✋ Hold Order
-            </button>
-            <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
-          </div>
+          <div className="button-group">
+  <button onClick={(e) => handleSubmit(e, 'saved')}>💾 Save Order</button>
+  <button onClick={(e) => handleSubmit(e, 'held')} className="btn-secondary">✋ Hold Order</button>
+  <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
+</div>
         </div>
         
         {message && (
@@ -2882,28 +2920,32 @@ console.log('🔍 Current boxes state when rendering:', boxes.map(box => ({
           <div className="modal-card">
             <h3>Add Custom Occasion</h3>
             <input
-              placeholder="Occasion Name"
-              value={newOccasion}
-              onChange={(e) => setNewOccasion(e.target.value)}
-              onBlur={() => {
-                if (newOccasion.trim()) {
-                  const words = newOccasion.trim().split(/\s+/);
-                  const autoPrefix = words.length === 1
-                    ? words[0].slice(0, 3)
-                    : words.map(w => w[0]).join('').slice(0, 3);
-                  setNewPrefix(autoPrefix.toUpperCase());
-                }
-              }}
-              required
-            />
+  placeholder="Occasion Name"
+  value={newOccasion}
+  onChange={(e) => setNewOccasion(e.target.value)}
+  onBlur={() => {
+    if (newOccasion.trim()) {
+      const words = newOccasion.trim().split(/\s+/);
+      const autoPrefix = words.length === 1
+        ? words[0].slice(0, 3)
+        : words.map(w => w[0]).join('').slice(0, 3);
+      setNewPrefix(autoPrefix.toUpperCase());
+    }
+  }}
+  required
+  autoComplete="off"
+  inputMode="text"
+/>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
               <input
-                placeholder="Prefix (3 letters)"
-                value={newPrefix}
-                maxLength={3}
-                onChange={(e) => setNewPrefix(e.target.value.toUpperCase())}
-                required
-              />
+  placeholder="Prefix (3 letters)"
+  value={newPrefix}
+  maxLength={3}
+  onChange={(e) => setNewPrefix(e.target.value.toUpperCase())}
+  required
+  autoComplete="off"
+  inputMode="text"
+/>
               <FaEdit style={{ cursor: 'pointer' }} title="Edit Prefix" />
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
