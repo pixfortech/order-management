@@ -6,6 +6,32 @@ import './theme.css';
 const SettingsPanel = () => {
   const { user } = useAuth();
 
+  // ✅ ENHANCED API URL HELPER FUNCTION
+  const getApiUrl = () => {
+    // 1. Check for environment variable first (highest priority)
+    if (process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== 'auto') {
+      return process.env.REACT_APP_API_URL.trim();
+    }
+    
+    // 2. Auto-detect based on hostname
+    const hostname = window.location.hostname;
+    
+    // Localhost detection
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+    
+    // Local network detection (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    if (hostname.startsWith('192.168.') || 
+        hostname.startsWith('10.') || 
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) {
+      return `http://${hostname}:5000`;
+    }
+    
+    // 3. Production fallback
+    return 'https://order-management-fbre.onrender.com';
+  };
+
   // ===== ALL STATE VARIABLES FIRST =====
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [message, setMessage] = useState('');
@@ -265,282 +291,295 @@ const [customerStats, setCustomerStats] = useState({
   
   // ===== API FUNCTIONS =====
 
-  const fetchMasterData = async () => {
+  // Replace the fetchMasterData function in SettingsPanel.jsx with this:
+
+const fetchMasterData = async () => {
+  try {
+    setIsLoadingData(true);
+    const token = localStorage.getItem('authToken');
+
+    console.log('🔍 Fetching settings data...');
+
+    // ✅ HELPER FUNCTION FOR API URL
+    const getApiUrl = () => {
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+      return isLocalhost ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com';
+    };
+
+    const apiUrl = getApiUrl();
+    console.log('🌐 Using API URL:', apiUrl);
+
+    // Fetch branches first to have the mapping available
     try {
-      setIsLoadingData(true);
-      const token = localStorage.getItem('authToken');
-
-      console.log('🔍 Fetching settings data...');
-
-      // Fetch branches first to have the mapping available
-      try {
-        console.log('🏢 Fetching branches...');
-        const branchesResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/branches`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (branchesResponse.ok) {
-          const contentType = branchesResponse.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            const branchesData = await branchesResponse.json();
-            console.log('🏢 Raw branches data:', branchesData);
-            
-            const branchesObj = {};
-            if (Array.isArray(branchesData)) {
-              branchesData.forEach(branch => {
-                branchesObj[branch.branchName] = branch.branchCode;
-              });
-            }
-            
-            console.log('🏢 Processed branches object:', branchesObj);
-            setBranches(branchesObj);
-          } else {
-            console.warn('⚠️ Branches API returned non-JSON response');
-            setBranches({});
+      console.log('🏢 Fetching branches...');
+      const branchesResponse = await fetch(`${apiUrl}/api/branches`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (branchesResponse.ok) {
+        const contentType = branchesResponse.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const branchesData = await branchesResponse.json();
+          console.log('🏢 Raw branches data:', branchesData);
+          
+          const branchesObj = {};
+          if (Array.isArray(branchesData)) {
+            branchesData.forEach(branch => {
+              branchesObj[branch.branchName] = branch.branchCode;
+            });
           }
+          
+          console.log('🏢 Processed branches object:', branchesObj);
+          setBranches(branchesObj);
         } else {
-          console.warn('⚠️ Branches API response not OK:', branchesResponse.status);
+          console.warn('⚠️ Branches API returned non-JSON response');
           setBranches({});
         }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch branches:', error);
+      } else {
+        console.warn('⚠️ Branches API response not OK:', branchesResponse.status);
         setBranches({});
       }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch branches:', error);
+      setBranches({});
+    }
 
-      // Fetch user profile
-      console.log('👤 Fetching user profile...');
-      try {
-        const usersResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/users`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (userResponse.ok) {
-          const contentType = userResponse.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            const userDataResponse = await userResponse.json();
-            const userData = userDataResponse.user || userDataResponse;
-            
-            console.log('👤 Raw user data:', userData);
-            
-            // Get the branch name - try different possible field names
-            const userBranchName = userData.branchName || 
-                                  userData.branch || 
-                                  userData.branchId || 
-                                  'Head Office';
-            
-            console.log('🏢 User branch from API:', userBranchName);
-            
-            setCurrentUser({
-              id: userData.id || userData._id,
-              username: userData.username,
-              branch: userBranchName,
-              branchCode: userData.branchCode,
-              role: userData.role,
-              displayName: userData.displayName || userData.username
-            });
-          } else {
-            console.warn('⚠️ User API returned non-JSON response');
-          }
+    // Fetch user profile
+    console.log('👤 Fetching user profile...');
+    try {
+      const userResponse = await fetch(`${apiUrl}/api/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (userResponse.ok) {
+        const contentType = userResponse.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const userDataResponse = await userResponse.json();
+          const userData = userDataResponse.user || userDataResponse;
+          
+          console.log('👤 Raw user data:', userData);
+          
+          // Get the branch name - try different possible field names
+          const userBranchName = userData.branchName || 
+                                userData.branch || 
+                                userData.branchId || 
+                                'Head Office';
+          
+          console.log('🏢 User branch from API:', userBranchName);
+          
+          setCurrentUser({
+            id: userData.id || userData._id,
+            username: userData.username,
+            branch: userBranchName,
+            branchCode: userData.branchCode,
+            role: userData.role,
+            displayName: userData.displayName || userData.username
+          });
         } else {
-          console.warn('⚠️ User API response not OK:', userResponse.status);
+          console.warn('⚠️ User API returned non-JSON response');
         }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch user data:', error);
+      } else {
+        console.warn('⚠️ User API response not OK:', userResponse.status);
       }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch user data:', error);
+    }
 
-      // Fetch brand details
-      try {
-        console.log('🏷️ Fetching brand details...');
-        const brandResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (brandResponse.ok) {
-          const contentType = brandResponse.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            const brandData = await brandResponse.json();
-            console.log('🏷️ Brand data:', brandData);
-            setBrandDetails(brandData);
-            setOriginalBrandDetails(brandData);
-            if (brandData.logo) {
-              setLogoPreview(brandData.logo);
-            }
-          } else {
-            console.warn('⚠️ Brand API returned non-JSON response');
-            setBrandDetails({ displayName: 'Brand', name: 'Brand' });
+    // Fetch brand details
+    try {
+      console.log('🏷️ Fetching brand details...');
+      const brandResponse = await fetch(`${apiUrl}/api/brand`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (brandResponse.ok) {
+        const contentType = brandResponse.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const brandData = await brandResponse.json();
+          console.log('🏷️ Brand data:', brandData);
+          setBrandDetails(brandData);
+          setOriginalBrandDetails(brandData);
+          if (brandData.logo) {
+            setLogoPreview(brandData.logo);
           }
         } else {
-          console.warn('⚠️ Brand API response not OK:', brandResponse.status);
+          console.warn('⚠️ Brand API returned non-JSON response');
           setBrandDetails({ displayName: 'Brand', name: 'Brand' });
         }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch brand data:', error);
+      } else {
+        console.warn('⚠️ Brand API response not OK:', brandResponse.status);
         setBrandDetails({ displayName: 'Brand', name: 'Brand' });
       }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch brand data:', error);
+      setBrandDetails({ displayName: 'Brand', name: 'Brand' });
+    }
 
-      // Fetch theme settings
-      try {
-        console.log('🎨 Fetching theme settings...');
-        const themeResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/theme`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (themeResponse.ok) {
-          const themeData = await themeResponse.json();
-          console.log('🎨 Theme data:', themeData);
-          setThemeColor(themeData.color || '#49488D');
-          setOriginalThemeColor(themeData.color || '#49488D');
-          document.documentElement.style.setProperty('--theme-color', themeData.color || '#49488D');
-        }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch theme data:', error);
+    // Fetch theme settings
+    try {
+      console.log('🎨 Fetching theme settings...');
+      const themeResponse = await fetch(`${apiUrl}/api/theme`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (themeResponse.ok) {
+        const themeData = await themeResponse.json();
+        console.log('🎨 Theme data:', themeData);
+        setThemeColor(themeData.color || '#49488D');
+        setOriginalThemeColor(themeData.color || '#49488D');
+        document.documentElement.style.setProperty('--theme-color', themeData.color || '#49488D');
       }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch theme data:', error);
+    }
 
-      // Fetch users (for all roles, but show management options only for admin)
-      try {
-        console.log('👥 Fetching users...');
-        const usersResponse = await fetch('http://localhost:5000/api/users', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (usersResponse.ok) {
-          const usersData = await usersResponse.json();
-          console.log('👥 Users data:', usersData);
-          setUsers(usersData || []);
-          setUsersPagination(prev => ({ ...prev, totalItems: (usersData || []).length }));
-        } else {
-          console.warn('⚠️ Users API response not OK:', usersResponse.status);
-          setUsers([]);
-        }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch users:', error);
+    // Fetch users (for all roles, but show management options only for admin)
+    try {
+      console.log('👥 Fetching users...');
+      const usersResponse = await fetch(`${apiUrl}/api/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (usersResponse.ok) {
+        const usersData = await usersResponse.json();
+        console.log('👥 Users data:', usersData);
+        setUsers(usersData || []);
+        setUsersPagination(prev => ({ ...prev, totalItems: (usersData || []).length }));
+      } else {
+        console.warn('⚠️ Users API response not OK:', usersResponse.status);
         setUsers([]);
       }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch users:', error);
+      setUsers([]);
+    }
 
-      // Fetch items
-      try {
-        console.log('📦 Fetching items...');
-        const itemsResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/items`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (itemsResponse.ok) {
-          const itemsData = await itemsResponse.json();
-          console.log('📦 Items data length:', itemsData.length);
-          setItems(itemsData || []);
-          setItemsPagination(prev => ({ ...prev, totalItems: (itemsData || []).length }));
-        } else {
-          console.warn('⚠️ Items API response not OK:', itemsResponse.status);
-          setItems([]);
-        }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch items:', error);
+    // Fetch items
+    try {
+      console.log('📦 Fetching items...');
+      const itemsResponse = await fetch(`${apiUrl}/api/items`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (itemsResponse.ok) {
+        const itemsData = await itemsResponse.json();
+        console.log('📦 Items data length:', itemsData.length);
+        setItems(itemsData || []);
+        setItemsPagination(prev => ({ ...prev, totalItems: (itemsData || []).length }));
+      } else {
+        console.warn('⚠️ Items API response not OK:', itemsResponse.status);
         setItems([]);
       }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch items:', error);
+      setItems([]);
+    }
 
-      // Fetch occasions
-      try {
-        console.log('🎉 Fetching occasions...');
-        const occasionsResponse = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/occasions`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (occasionsResponse.ok) {
-          const occasionsData = await occasionsResponse.json();
-          console.log('🎉 Occasions data:', occasionsData);
-          setOccasions(occasionsData || []);
-          setOccasionsPagination(prev => ({ ...prev, totalItems: (occasionsData || []).length }));
-        } else {
-          console.warn('⚠️ Occasions API response not OK:', occasionsResponse.status);
-          setOccasions([]);
-        }
-      } catch (error) {
-        console.warn('⚠️ Failed to fetch occasions:', error);
+    // Fetch occasions
+    try {
+      console.log('🎉 Fetching occasions...');
+      const occasionsResponse = await fetch(`${apiUrl}/api/occasions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (occasionsResponse.ok) {
+        const occasionsData = await occasionsResponse.json();
+        console.log('🎉 Occasions data:', occasionsData);
+        setOccasions(occasionsData || []);
+        setOccasionsPagination(prev => ({ ...prev, totalItems: (occasionsData || []).length }));
+      } else {
+        console.warn('⚠️ Occasions API response not OK:', occasionsResponse.status);
         setOccasions([]);
       }
-	  
-	  // Fetch customers
-try {
-  console.log('👥 Fetching customers...');
-  let customersUrl = `${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/customers`;
-  
-  // For non-admin users, fetch only their branch customers
-  if (currentUser.role !== 'admin' && currentUser.branch) {
-    const branchCode = branches[currentUser.branch];
-    if (branchCode) {
-      customersUrl += `?branch=${branchCode}`;
-    }
-  }
-  
-  const customersResponse = await fetch(customersUrl, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  
-  if (customersResponse.ok) {
-    const customersData = await customersResponse.json();
-    console.log('👥 Customers data:', customersData);
-    setCustomers(customersData || []);
-    setCustomersPagination(prev => ({ ...prev, totalItems: (customersData || []).length }));
-  } else {
-    console.warn('⚠️ Customers API response not OK:', customersResponse.status);
-    setCustomers([]);
-  }
-} catch (error) {
-  console.warn('⚠️ Failed to fetch customers:', error);
-  setCustomers([]);
-}
-
-      console.log('✅ Settings data fetch completed');
-      setIsLoadingData(false);
-      
-      // If no branches were loaded, use fallback data for development
-      if (Object.keys(branches).length === 0) {
-        console.log('🔧 Using fallback branch data for development');
-        const fallbackBranches = {
-          'Head Office': 'HO',
-          'Misti Hub': 'MH',
-          'Chowringhee': 'CW',
-          'Beadon Street': 'BS',
-          'Baranagar': 'BN'
-        };
-        setBranches(fallbackBranches);
-      }
-      
-      // If no current user branch set, use Head Office
-      if (!currentUser.branch || currentUser.branch === 'Loading...') {
-        setCurrentUser(prev => ({
-          ...prev,
-          branch: 'Head Office',
-          role: 'admin',
-          displayName: 'System Administrator',
-          username: 'admin'
-        }));
-      }
-      
     } catch (error) {
-      console.error('❌ Error fetching settings data:', error);
-      showMessage('⚠️ Failed to load settings data. Using fallback data for development.', 'error');
-      setIsLoadingData(false);
+      console.warn('⚠️ Failed to fetch occasions:', error);
+      setOccasions([]);
+    }
+
+    // Fetch customers
+    try {
+      console.log('👥 Fetching customers...');
+      let customersUrl = `${apiUrl}/api/customers`;
       
-      // Set fallback data
-      setBranches({
+      // For non-admin users, fetch only their branch customers
+      if (currentUser.role !== 'admin' && currentUser.branch) {
+        const branchCode = branches[currentUser.branch];
+        if (branchCode) {
+          customersUrl += `?branch=${branchCode}`;
+        }
+      }
+      
+      const customersResponse = await fetch(customersUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (customersResponse.ok) {
+        const customersData = await customersResponse.json();
+        console.log('👥 Customers data:', customersData);
+        setCustomers(customersData || []);
+        setCustomersPagination(prev => ({ ...prev, totalItems: (customersData || []).length }));
+      } else {
+        console.warn('⚠️ Customers API response not OK:', customersResponse.status);
+        setCustomers([]);
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch customers:', error);
+      setCustomers([]);
+    }
+
+    console.log('✅ Settings data fetch completed');
+    setIsLoadingData(false);
+    
+    // If no branches were loaded, use fallback data for development
+    if (Object.keys(branches).length === 0) {
+      console.log('🔧 Using fallback branch data for development');
+      const fallbackBranches = {
         'Head Office': 'HO',
         'Misti Hub': 'MH',
         'Chowringhee': 'CW',
         'Beadon Street': 'BS',
         'Baranagar': 'BN'
-      });
-      setCurrentUser({
-        id: 'fallback-user',
-        username: 'admin',
-        branch: 'Head Office',
-        branchCode: 'HO',
-        role: 'admin',
-        displayName: 'System Administrator'
-      });
-      setBrandDetails({ displayName: 'Brand Name', name: 'Brand' });
+      };
+      setBranches(fallbackBranches);
     }
-  };
+    
+    // If no current user branch set, use Head Office
+    if (!currentUser.branch || currentUser.branch === 'Loading...') {
+      setCurrentUser(prev => ({
+        ...prev,
+        branch: 'Head Office',
+        role: 'admin',
+        displayName: 'System Administrator',
+        username: 'admin'
+      }));
+    }
+    
+  } catch (error) {
+    console.error('❌ Error fetching settings data:', error);
+    showMessage('⚠️ Failed to load settings data. Using fallback data for development.', 'error');
+    setIsLoadingData(false);
+    
+    // Set fallback data
+    setBranches({
+      'Head Office': 'HO',
+      'Misti Hub': 'MH',
+      'Chowringhee': 'CH',
+      'Beadon Street': 'BD',
+      'Baranagar': 'BN',
+	  'Ariadaha': 'AR'
+    });
+    setCurrentUser({
+      id: 'fallback-user',
+      username: 'admin',
+      branch: 'Head Office',
+      branchCode: 'HO',
+      role: 'admin',
+      displayName: 'System Administrator'
+    });
+    setBrandDetails({ displayName: 'Brand Name', name: 'Brand' });
+  }
+};
   
   // Replace your saveBrandDetails function with this enhanced version:
 
@@ -556,7 +595,7 @@ const saveBrandDetails = async () => {
     const token = localStorage.getItem('authToken');
     console.log('💾 Saving brand details:', brandDetails);
     
-    const response = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
+    const response = await fetch(`${getApiUrl()}/api/brand`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -599,7 +638,7 @@ const saveBrandDetails = async () => {
       const token = localStorage.getItem('authToken');
       console.log('🎨 Saving theme color:', themeColor);
       
-      const response = await fetch('http://localhost:5000/api/theme', {
+      const response = await fetch(`${getApiUrl()}/api/theme`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -638,8 +677,8 @@ const saveBrandDetails = async () => {
       const token = localStorage.getItem('authToken');
       const method = editingUserId ? 'PUT' : 'POST';
       const url = editingUserId 
-        ? `http://localhost:5000/api/users/${editingUserId}`
-        : 'http://localhost:5000/api/users';
+        ? `${getApiUrl()}/api/users/${editingUserId}`
+        : `${getApiUrl()}/api/users`;
 
       const userData = { ...newUser };
       if (editingUserId && !userData.password) {
@@ -690,7 +729,7 @@ const saveBrandDetails = async () => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+      const response = await fetch(`${getApiUrl()}/api/users/${userId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -717,8 +756,8 @@ const saveBrandDetails = async () => {
       const token = localStorage.getItem('authToken');
       const method = editingItemId ? 'PUT' : 'POST';
       const url = editingItemId 
-        ? `http://localhost:5000/api/items/${editingItemId}`
-        : 'http://localhost:5000/api/items';
+        ? `${getApiUrl()}/api/items/${editingItemId}`
+        : `${getApiUrl()}/api/items`;
 
       console.log('📦 Saving item:', newItem);
 
@@ -760,7 +799,7 @@ const saveBrandDetails = async () => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`http://localhost:5000/api/items/${itemId}`, {
+      const response = await fetch(`${getApiUrl()}/api/items/${itemId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -787,8 +826,8 @@ const saveBrandDetails = async () => {
       const token = localStorage.getItem('authToken');
       const method = editingOccasionId ? 'PUT' : 'POST';
       const url = editingOccasionId 
-        ? `http://localhost:5000/api/occasions/${editingOccasionId}`
-        : 'http://localhost:5000/api/occasions';
+        ? `${getApiUrl()}/api/occasions/${editingOccasionId}`
+        : `${getApiUrl()}/api/occasions`;
 
       console.log('🎉 Saving occasion:', newOccasion);
 
@@ -830,7 +869,7 @@ const saveBrandDetails = async () => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`http://localhost:5000/api/occasions/${occasionId}`, {
+      const response = await fetch(`${getApiUrl()}/api/occasions/${occasionId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -859,7 +898,7 @@ const saveBrandDetails = async () => {
     
     console.log('👥 Fetching customers...');
     
-    let url = 'http://localhost:5000/api/customers';
+    let url = `${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/customers`;
     
     // For non-admin users, fetch only their branch customers
     if (currentUser.role !== 'admin' && currentUser.branch && Object.keys(branches).length > 0) {
@@ -916,8 +955,8 @@ const saveBrandDetails = async () => {
     
     const method = editingCustomerId ? 'PUT' : 'POST';
     const url = editingCustomerId 
-      ? `http://localhost:5000/api/customers/${editingCustomerId}`
-      : 'http://localhost:5000/api/customers';
+      ? `${getApiUrl()}/api/customers/${editingCustomerId}`
+      : `${getApiUrl()}/api/customers`;
 
     const customerData = { 
       ...newCustomer,
@@ -976,7 +1015,7 @@ const saveBrandDetails = async () => {
       return;
     }
     
-    const response = await fetch(`http://localhost:5000/api/customers/${customerId}`, {
+    const response = await fetch(`${getApiUrl()}/api/customers/${customerId}`, {
       method: 'DELETE',
       headers: { 
         'Authorization': `Bearer ${token}`,
