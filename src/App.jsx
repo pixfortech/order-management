@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import LoginPage from './components/LoginPage';
-import Dashboard from './components/Dashboard';
+import Dashboard from './components/MainLayout';
 import './App.css';
 
 // Debug component to show connection status
