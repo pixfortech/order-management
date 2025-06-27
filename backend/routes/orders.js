@@ -1,8 +1,10 @@
-// routes/orders.js - Permanent Complete Solution
+// routes/orders.js - Fixed with correct utils path
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { auth } = require('../middleware/auth');
+
+// ✅ FIXED: Import from the correct utils path (based on deployment structure)
 const { createChangelogEntry, generateChanges } = require('../utils/changelog'); 
 
 // Import models
@@ -270,7 +272,6 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// ===== REPLACE YOUR EXISTING POST ROUTE WITH THIS =====
 // POST /api/orders - Create new order (UPDATED with changelog)
 router.post('/', auth, async (req, res) => {
   try {
@@ -356,7 +357,7 @@ router.post('/', auth, async (req, res) => {
       ...finalOrderData
     };
     
-    // ✅ NEW: CREATE CHANGELOG ENTRY FOR NEW ORDER
+    // ✅ CREATE CHANGELOG ENTRY FOR NEW ORDER
     try {
       await createChangelogEntry(
         savedOrder._id,
@@ -384,7 +385,6 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// ===== REPLACE YOUR EXISTING PUT ROUTE WITH THIS =====
 // PUT /api/orders/:branchCode/:id - Update order (UPDATED with changelog)
 router.put('/:branchCode/:id', auth, async (req, res) => {
   try {
@@ -408,7 +408,7 @@ router.put('/:branchCode/:id', auth, async (req, res) => {
     const db = mongoose.connection.db;
     const collection = db.collection(collectionName);
     
-    // ✅ NEW: Get the old order data BEFORE updating (for changelog)
+    // Get the old order data BEFORE updating (for changelog)
     const oldOrder = await collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
     if (!oldOrder) {
       return res.status(404).json({ message: 'Order not found' });
@@ -434,7 +434,7 @@ router.put('/:branchCode/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Order not found after update' });
     }
     
-    // ✅ NEW: GENERATE CHANGES AND CREATE CHANGELOG ENTRY
+    // ✅ GENERATE CHANGES AND CREATE CHANGELOG ENTRY
     try {
       const changes = generateChanges(oldOrder, result.value);
       
@@ -481,8 +481,6 @@ router.put('/:branchCode/:id', auth, async (req, res) => {
   }
 });
 
-
-// ===== REPLACE YOUR EXISTING DELETE ROUTE WITH THIS =====
 // DELETE /api/orders/:branchCode/:id - Delete order (UPDATED with changelog)
 router.delete('/:branchCode/:id', auth, async (req, res) => {
   try {
@@ -518,7 +516,7 @@ router.delete('/:branchCode/:id', auth, async (req, res) => {
       { returnDocument: 'after' }
     );
     
-    // ✅ NEW: CREATE CHANGELOG ENTRY FOR DELETION
+    // ✅ CREATE CHANGELOG ENTRY FOR DELETION
     try {
       await createChangelogEntry(
         order._id,
