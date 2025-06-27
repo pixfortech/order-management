@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
-const Changelog = require('./models/Changelog');
+const Changelog = require('../models/Changelog');
 const jwt = require('jsonwebtoken');
 
 // Authentication middleware (copied from server.js)
