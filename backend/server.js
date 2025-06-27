@@ -17,6 +17,7 @@ const ordersRoutes = require('./routes/orders');
 const emailRoutes = require('./routes/emails');
 const vendorsRoutes = require('./routes/vendors');
 const dashboardRoutes = require('./routes/dashboard');
+const changelogRoutes = require('./routes/changelog');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -816,7 +817,7 @@ app.use('/api/occasions', occasionsRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/changelog', require('./routes/changelog'));
+app.use('/api/changelog', changelogRoutes);
 
 // ===== DATABASE CONNECTION AND SERVER STARTUP =====
 
