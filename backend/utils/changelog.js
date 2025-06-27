@@ -1,4 +1,4 @@
-const Changelog = require('../models/Changelog');
+const Changelog = require('./models/Changelog');
 
 /**
  * Create a changelog entry for order changes

@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { auth } = require('../middleware/auth');
-const { createChangelogEntry, generateChanges } = require('../utils/changelog'); 
+const { createChangelogEntry, generateChanges } = require('./utils/changelog'); 
 
 // Import models
 const Order = require('../models/Order');
