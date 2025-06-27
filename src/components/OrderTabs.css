@@ -426,3 +426,98 @@ td button:hover {
   color: #999;
   font-size: 16px;
 }
+
+/* Add these styles to your OrderTabs.css file */
+
+/* Balance Cell Styles */
+.balance-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+  font-size: 14px;
+}
+
+.balance-cell.fully-paid {
+  background-color: #e8f5e9 !important;
+  color: #2e7d32 !important;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-weight: bold;
+  border: 1px solid #4caf50;
+}
+
+.balance-cell.pending-payment {
+  color: #d32f2f;
+  font-weight: bold;
+  font-size: 15px;
+}
+
+/* Row styling for fully paid orders */
+.fully-paid-row {
+  background-color: #f1f8e9 !important;
+}
+
+.fully-paid-row:hover {
+  background-color: #e8f5e9 !important;
+}
+
+/* Ensure the check icon is properly aligned */
+.balance-cell .fa-check {
+  margin-right: 5px;
+  font-size: 12px;
+}
+
+/* Table cell padding adjustments */
+.order-tabs table td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+/* Responsive adjustments for balance column */
+@media (max-width: 768px) {
+  .balance-cell {
+    min-width: 80px;
+    font-size: 12px;
+  }
+  
+  .balance-cell.fully-paid {
+    padding: 6px 8px;
+  }
+}
+
+/* Add these specific styles to your OrderTabs.css file */
+
+/* Fully paid row styling */
+.fully-paid-row {
+  background-color: #f1f8e9 !important;
+  border-left: 4px solid #4caf50 !important;
+}
+
+.fully-paid-row:hover {
+  background-color: #e8f5e9 !important;
+}
+
+/* Sub-order rows for fully paid */
+.fully-paid-row.sub-order {
+  background-color: #f9fdf9 !important;
+  border-left: 4px solid #81c784 !important;
+}
+
+.fully-paid-row.sub-order:hover {
+  background-color: #f1f8e9 !important;
+}
+
+/* Balance cell styling */
+.balance-cell.fully-paid {
+  background-color: #e8f5e9 !important;
+  color: #2e7d32 !important;
+  border: 1px solid #4caf50 !important;
+  box-shadow: 0 1px 3px rgba(76, 175, 80, 0.2);
+}
+
+/* Ensure check icon alignment */
+.balance-cell .fa-check {
+  margin-right: 5px;
+  font-size: 12px;
+}

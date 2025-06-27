@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import LoginPage from './components/LoginPage';
@@ -12,6 +12,15 @@ import { getApiUrl } from './auth/apiConfig';
 const MainLayout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  // ✅ ADD THESE NEW LINES FOR ORDER MANAGEMENT
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orderRefreshTrigger, setOrderRefreshTrigger] = useState(0);
+  const [changelogData, setChangelogData] = useState({});
+  const viewChangelog = (orderId) => {
+    console.log('📜 Viewing changelog for order:', orderId);
+    // Add your changelog viewing logic here
+  };
+  const orderFormRef = useRef();
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
@@ -45,35 +54,63 @@ const MainLayout = () => {
       document.body.style.overflow = '';
     }
   };
+  
+  // ✅ ADD THESE NEW FUNCTIONS
+  const switchToFormTab = () => {
+    console.log('🔄 Switching to form tab...');
+    navigate('/current-order');
+  };
+
+  const handleEditOrder = (order) => {
+    console.log('📝 App - Setting selected order for editing:', order);
+    setSelectedOrder(order);
+    switchToFormTab();
+  };
+
+  const clearSelectedOrder = () => {
+    console.log('🗑️ App - Clearing selected order');
+    setSelectedOrder(null);
+  };
 
   return (
-    <>
-      {/* Header */}
-      <Header 
-        isMobile={isMobile}
-        isMobileMenuOpen={isMobileMenuOpen}
-        onToggleMobileMenu={toggleMobileMenu}
-        user={auth.user}
-        onLogout={auth.logout}
-        location={location}
-        navigate={navigate}
-      />
+  <>
+    {/* Header */}
+    <Header 
+      isMobile={isMobile}
+      isMobileMenuOpen={isMobileMenuOpen}
+      onToggleMobileMenu={toggleMobileMenu}
+      user={auth.user}
+      onLogout={auth.logout}
+      location={location}
+      navigate={navigate}
+    />
 
-      {/* Mobile Navigation */}
-      <MobileNavigation 
-        isOpen={isMobileMenuOpen}
-        currentPath={location.pathname}
-        onNavigate={handleNavigation}
-        user={auth.user}
-        onLogout={auth.logout}
-      />
+    {/* Mobile Navigation */}
+    <MobileNavigation 
+      isOpen={isMobileMenuOpen}
+      currentPath={location.pathname}
+      onNavigate={handleNavigation}
+      user={auth.user}
+      onLogout={auth.logout}
+    />
 
-      {/* Main Content */}
-      <main className={`app-main ${isMobile ? 'mobile' : ''}`}>
-        {renderCurrentPage(location.pathname)}
-      </main>
-    </>
-  );
+    {/* Main Content */}
+    <main className={`app-main ${isMobile ? 'mobile' : ''}`}>
+      {renderCurrentPage(
+        location.pathname, 
+        selectedOrder, 
+        setSelectedOrder, 
+        orderFormRef, 
+        handleEditOrder, 
+        switchToFormTab,
+        orderRefreshTrigger,
+        setOrderRefreshTrigger,
+        changelogData,
+        viewChangelog
+      )}
+    </main>
+  </>
+);
 };
 
 // Header Component
@@ -228,14 +265,29 @@ const UserActions = ({ user, onLogout, isMobile }) => {
 };
 
 // Render current page content
-const renderCurrentPage = (pathname) => {
+const renderCurrentPage = (pathname, selectedOrder, setSelectedOrder, orderFormRef, handleEditOrder, switchToFormTab, orderRefreshTrigger, setOrderRefreshTrigger, changelogData, viewChangelog) => {
   switch (pathname) {
     case '/':
       return <Dashboard />;
     case '/current-order':
-      return <OrderForm />;
+      return (
+        <OrderForm 
+          ref={orderFormRef}
+          selectedOrder={selectedOrder}
+          setSelectedOrder={setSelectedOrder}
+          onOrderUpdate={() => setOrderRefreshTrigger(prev => prev + 1)}
+        />
+      );
     case '/orders':
-      return <OrderTabs />;
+      return (
+        <OrderTabs 
+          setSelectedOrder={setSelectedOrder}
+          switchToFormTab={switchToFormTab}
+          changelogData={changelogData}
+          viewChangelog={viewChangelog}
+          refreshTrigger={orderRefreshTrigger}
+        />
+      );
     case '/summary':
       return <OrderSummary />;
     case '/settings':

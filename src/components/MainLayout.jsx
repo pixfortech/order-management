@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // ✅ ADDED: missing imports
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext'; // ✅ ADDED: missing import
 import OrderForm from './OrderForm';
 import OrderTabs from './OrderTabs';
 import OrderSummary from './OrderSummary';
@@ -13,6 +14,7 @@ const MainLayout = () => {
   // Component state
   const [activeTab, setActiveTab] = useState('order');
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // ✅ ADDED: missing state
   const formRef = useRef();
 
   const { user, logout } = useAuth();
@@ -52,12 +54,20 @@ const MainLayout = () => {
       document.documentElement.style.setProperty('--theme-color', event.detail.color);
     };
     
+    // ✅ ADDED: Listen for order updates to refresh tabs
+    const handleOrderUpdate = () => {
+      console.log('🔄 Order update detected in MainLayout');
+      setRefreshTrigger(prev => prev + 1);
+    };
+    
     window.addEventListener('brandUpdated', handleBrandUpdate);
     window.addEventListener('themeUpdated', handleThemeUpdate);
+    window.addEventListener('orderUpdated', handleOrderUpdate); // ✅ ADDED
     
     return () => {
       window.removeEventListener('brandUpdated', handleBrandUpdate);
       window.removeEventListener('themeUpdated', handleThemeUpdate);
+      window.removeEventListener('orderUpdated', handleOrderUpdate); // ✅ ADDED
     };
   }, []);
 
@@ -124,12 +134,21 @@ const MainLayout = () => {
       <div style={{ padding: '20px' }}>
         {/* Current Order - Always accessible */}
         {activeTab === 'order' && (
-          <OrderForm selectedOrder={selectedOrder} setSelectedOrder={setSelectedOrder} ref={formRef} />
+          <OrderForm 
+            selectedOrder={selectedOrder} 
+            setSelectedOrder={setSelectedOrder} 
+            ref={formRef}
+            onOrderUpdate={() => setRefreshTrigger(prev => prev + 1)} // ✅ ADDED: Pass refresh trigger
+          />
         )}
         
         {/* Orders - Always accessible */}
         {activeTab === 'orders' && (
-          <OrderTabs setSelectedOrder={setSelectedOrder} switchToFormTab={() => setActiveTab('order')} />
+          <OrderTabs 
+            setSelectedOrder={setSelectedOrder} 
+            switchToFormTab={() => setActiveTab('order')}
+            refreshTrigger={refreshTrigger} // ✅ ADDED: Pass refresh trigger
+          />
         )}
         
         {/* Summary - Now using OrderSummary component */}

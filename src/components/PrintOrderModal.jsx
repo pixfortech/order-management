@@ -4,32 +4,74 @@ import './PrintOrderModal.css';
 const PrintOrderModal = ({ order, onClose }) => {
   const [brandDetails, setBrandDetails] = useState({ 
     displayName: 'Order Management', 
-    name: 'Brand' 
+    name: 'Brand',
+    address: '',
+    phone: '',
+    email: ''
   });
+  const [branchDetails, setBranchDetails] = useState({
+    branchName: '',
+    address: '',
+    phone: '',
+    email: ''
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch brand details for the header
+  // Fetch brand and branch details
   useEffect(() => {
-    const fetchBrandDetails = async () => {
+    const fetchBrandAndBranchDetails = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://order-management-fbre.onrender.com'}/api/brand`, {
+        const getApiUrl = () => {
+          if (window.location.hostname === 'localhost') {
+            return 'http://localhost:5000';
+          }
+          return 'https://order-management-fbre.onrender.com';
+        };
+        
+        const baseUrl = getApiUrl();
+        
+        // Fetch brand details
+        const brandResponse = await fetch(`${baseUrl}/api/brand`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        if (response.ok) {
-          const brandData = await response.json();
+        if (brandResponse.ok) {
+          const brandData = await brandResponse.json();
           setBrandDetails({
             displayName: brandData.displayName || brandData.name || 'Order Management',
-            name: brandData.name || 'Brand'
+            name: brandData.name || 'Brand',
+            address: brandData.address || '',
+            phone: brandData.phone || '',
+            email: brandData.email || ''
           });
         }
+
+        // Fetch branch details based on order's branch
+        if (order.branchCode) {
+          const branchResponse = await fetch(`${baseUrl}/api/branches/${order.branchCode}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (branchResponse.ok) {
+            const branchData = await branchResponse.json();
+            setBranchDetails({
+              branchName: branchData.branchName || order.branch || '',
+              address: branchData.address || '',
+              phone: branchData.phone || '',
+              email: branchData.email || ''
+            });
+          }
+        }
       } catch (error) {
-        console.warn('Could not fetch brand details:', error);
+        console.warn('Could not fetch brand/branch details:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
     
-    fetchBrandDetails();
-  }, []);
+    fetchBrandAndBranchDetails();
+  }, [order.branchCode, order.branch]);
 
   const handlePrint = () => {
     window.print();
@@ -56,12 +98,38 @@ const PrintOrderModal = ({ order, onClose }) => {
   };
 
   const grandTotal = calculateGrandTotal();
-  const balance = grandTotal - (order.advancePaid || 0);
+  const balancePaid = Number(order.balancePaid) || 0;
+  const advancePaid = Number(order.advancePaid) || 0;
+  const remainingBalance = Math.max(0, grandTotal - advancePaid - balancePaid);
+
+  // Format payment timestamps
+  const formatPaymentTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
 
   // Determine which boxes to show based on boxViewMode
   const boxesToShow = order.boxViewMode === 'all' || order.boxViewMode === undefined
     ? order.boxes
     : [order.boxes[order.boxViewMode]];
+
+  if (isLoading) {
+    return (
+      <div className="print-modal-backdrop">
+        <div className="print-modal-content">
+          <div className="loading-message">Loading print details...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="print-modal-backdrop" onClick={onClose}>
@@ -78,7 +146,13 @@ const PrintOrderModal = ({ order, onClose }) => {
           {/* Header */}
           <div className="print-header">
             <h1>{brandDetails.displayName}</h1>
-            <h2>Order Receipt</h2>
+            <div className="branch-info">
+              <h2>{branchDetails.branchName}</h2>
+              {branchDetails.address && <p>{branchDetails.address}</p>}
+              {branchDetails.phone && <p>📞 {branchDetails.phone}</p>}
+              {branchDetails.email && <p>📧 {branchDetails.email}</p>}
+            </div>
+            <h3>Order Receipt</h3>
           </div>
 
           {/* Order Info */}
@@ -104,7 +178,7 @@ const PrintOrderModal = ({ order, onClose }) => {
                 <strong>Occasion:</strong> {order.occasion}
               </div>
               <div className="order-info-col">
-                <strong>Branch:</strong> {order.branch}
+                <strong>Branch:</strong> {branchDetails.branchName || order.branch}
               </div>
             </div>
           </div>
@@ -209,17 +283,47 @@ const PrintOrderModal = ({ order, onClose }) => {
                   <span><strong>₹{grandTotal.toFixed(2)}</strong></span>
                 </div>
                 
-                {order.advancePaid > 0 && (
-                  <>
-                    <div className="total-row">
-                      <span>Advance Paid:</span>
-                      <span>₹{order.advancePaid.toFixed(2)}</span>
-                    </div>
-                    <div className="total-row balance">
-                      <span><strong>Balance Due:</strong></span>
-                      <span><strong>₹{balance.toFixed(2)}</strong></span>
-                    </div>
-                  </>
+                {/* Payment Details with Timestamps */}
+                {advancePaid > 0 && (
+                  <div className="total-row payment-row">
+                    <span>
+                      Advance Paid:
+                      {order.advancePaidDate && (
+                        <small className="payment-timestamp">
+                          <br />Paid on: {formatPaymentTimestamp(order.advancePaidDate)}
+                        </small>
+                      )}
+                    </span>
+                    <span>₹{advancePaid.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {balancePaid > 0 && (
+                  <div className="total-row payment-row">
+                    <span>
+                      Balance Paid:
+                      {order.balancePaidDate && (
+                        <small className="payment-timestamp">
+                          <br />Paid on: {formatPaymentTimestamp(order.balancePaidDate)}
+                        </small>
+                      )}
+                    </span>
+                    <span>₹{balancePaid.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {remainingBalance > 0 && (
+                  <div className="total-row balance">
+                    <span><strong>Balance Due:</strong></span>
+                    <span><strong>₹{remainingBalance.toFixed(2)}</strong></span>
+                  </div>
+                )}
+                
+                {remainingBalance <= 0 && (advancePaid > 0 || balancePaid > 0) && (
+                  <div className="total-row fully-paid">
+                    <span><strong>Status:</strong></span>
+                    <span><strong>✅ Fully Paid</strong></span>
+                  </div>
                 )}
               </div>
             </div>

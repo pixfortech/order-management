@@ -1,675 +1,610 @@
+// routes/orders.js - Permanent Complete Solution
 const express = require('express');
-const mongoose = require('mongoose');
-const { auth, adminOnly } = require('../middleware/auth');
-const { getOrderModel, getCustomerModel } = require('../utils/dynamicCollections');
-
 const router = express.Router();
+const mongoose = require('mongoose');
+const { auth } = require('../middleware/auth');
+const { createChangelogEntry, generateChanges } = require('../utils/changelog'); 
 
-// @route   GET /api/orders/check-draft
-// @desc    Check if draft exists for order number
-// @access  Private
-router.get('/check-draft', auth, async (req, res) => {
+// Import models
+const Order = require('../models/Order');
+
+// Helper to get Branch model without import conflicts
+const getBranchModel = () => {
   try {
-    const { orderNumber } = req.query;
+    return mongoose.model('Branch');
+  } catch (error) {
+    return require('../models/Branch');
+  }
+};
+
+// ===== ORDER COLLECTION MANAGEMENT =====
+
+/**
+ * Get all order collection names in the database
+ * Handles both main 'orders' collection and branch-specific collections like 'orders_bd'
+ */
+async function getOrderCollectionNames() {
+  try {
+    const db = mongoose.connection.db;
+    const collections = await db.listCollections().toArray();
     
-    if (!orderNumber) {
-      return res.status(400).json({ error: 'Order number is required' });
+    return collections
+      .filter(c => c.name === 'orders' || c.name.startsWith('orders_'))
+      .map(c => c.name)
+      .sort(); // Sort for consistency
+  } catch (error) {
+    console.error('❌ Error getting order collections:', error);
+    return ['orders']; // Fallback to main collection
+  }
+}
+
+/**
+ * Get appropriate order collection name for a branch
+ */
+function getOrderCollectionForBranch(branchCode) {
+  if (!branchCode) return 'orders';
+  return `orders_${branchCode.toLowerCase()}`;
+}
+
+/**
+ * Fetch orders from multiple collections with proper filtering
+ */
+async function fetchOrdersFromCollections(user, filters = {}) {
+  const db = mongoose.connection.db;
+  const isAdmin = user.role === 'admin';
+  let collectionsToSearch = [];
+  
+  if (isAdmin) {
+    if (filters.branch) {
+      // Admin filtering by specific branch
+      const targetCollection = getOrderCollectionForBranch(filters.branch);
+      collectionsToSearch = [targetCollection];
+    } else {
+      // Admin viewing all branches
+      collectionsToSearch = await getOrderCollectionNames();
     }
-    
-    console.log('🔍 Checking for draft:', orderNumber);
-    
-    // Extract branch code from order number
-    const branchCode = orderNumber.split('-')[0].toLowerCase();
-    const OrderModel = getOrderModel(branchCode);
-    
-    const draft = await OrderModel.findOne({ 
-      orderNumber, 
-      isDraft: true,
-      status: 'auto-saved' 
-    });
-    
-    console.log('📝 Draft check result:', {
-      orderNumber,
-      found: !!draft,
-      draftId: draft?._id
-    });
-    
-    res.json({ 
-      exists: !!draft, 
-      draftId: draft?._id 
-    });
-  } catch (error) {
-    console.error('❌ Error checking draft:', error);
-    res.status(500).json({ error: error.message });
+  } else {
+    // Non-admin users - only their branch
+    const userBranchCode = user.branchCode || user.branch;
+    if (userBranchCode) {
+      collectionsToSearch = [getOrderCollectionForBranch(userBranchCode)];
+    } else {
+      console.warn('⚠️ User has no branch assigned:', user.username);
+      return [];
+    }
   }
-});
-
-// @route   DELETE /api/orders/cleanup-drafts/:orderNumber
-// @desc    Clean up auto-saved drafts for specific order number
-// @access  Private
-router.delete('/cleanup-drafts/:orderNumber', auth, async (req, res) => {
-  try {
-    const { orderNumber } = req.params;
-    console.log('🧹 Cleaning up auto-saved drafts for order:', orderNumber);
-    
-    // Extract branch code from order number
-    const branchCode = orderNumber.split('-')[0].toLowerCase();
-    const OrderModel = getOrderModel(branchCode);
-    
-    // Delete all auto-saved drafts for this order number
-    const deleteResult = await OrderModel.deleteMany({
-      orderNumber: orderNumber,
-      status: 'auto-saved',
-      isDraft: true
-    });
-    
-    console.log('✅ Deleted auto-saved drafts:', deleteResult.deletedCount);
-    
-    res.json({
-      success: true,
-      message: `Cleaned up ${deleteResult.deletedCount} auto-saved drafts`,
-      deletedCount: deleteResult.deletedCount
-    });
-    
-  } catch (error) {
-    console.error('❌ Error cleaning up drafts:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to cleanup auto-saved drafts',
-      error: error.message
-    });
-  }
-});
-
-// @route   DELETE /api/orders/cleanup-old-drafts
-// @desc    Clean up old auto-saved drafts (older than 7 days)
-// @access  Private (Admin)
-router.delete('/cleanup-old-drafts', auth, adminOnly, async (req, res) => {
-  try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    console.log('🧹 Cleaning up auto-saved drafts older than:', sevenDaysAgo);
-    
-    // Get all branch codes
-    const branchesCollection = mongoose.connection.db.collection('branches');
-    const branches = await branchesCollection.find({}).toArray();
-    
-    let totalDeleted = 0;
-    
-    for (const branch of branches) {
-      try {
-        const OrderModel = getOrderModel(branch.branchCode.toLowerCase());
-        const result = await OrderModel.deleteMany({
-          status: 'auto-saved',
-          isDraft: true,
-          createdAt: { $lt: sevenDaysAgo }
-        });
-        totalDeleted += result.deletedCount;
-      } catch (error) {
-        console.warn(`Failed to cleanup drafts from branch ${branch.branchCode}:`, error.message);
+  
+  console.log('🔍 Searching in collections:', collectionsToSearch);
+  
+  let allOrders = [];
+  
+  for (const collectionName of collectionsToSearch) {
+    try {
+      const collection = db.collection(collectionName);
+      
+      // Build query based on filters
+      const query = {};
+      
+      if (filters.customerName) {
+        query.customerName = new RegExp(filters.customerName, 'i');
       }
+      if (filters.phone) {
+        query.phone = new RegExp(filters.phone);
+      }
+      if (filters.status) {
+        query.status = filters.status;
+      }
+      if (filters.orderDate) {
+        const date = new Date(filters.orderDate);
+        const nextDay = new Date(date);
+        nextDay.setDate(date.getDate() + 1);
+        query.orderDate = { $gte: date, $lt: nextDay };
+      }
+      if (filters.deliveryDate) {
+        const date = new Date(filters.deliveryDate);
+        const nextDay = new Date(date);
+        nextDay.setDate(date.getDate() + 1);
+        query.deliveryDate = { $gte: date, $lt: nextDay };
+      }
+      
+      console.log(`📊 Querying ${collectionName} with:`, query);
+      
+      const orders = await collection.find(query).toArray();
+      
+      // Add collection info to each order for tracking
+      const ordersWithSource = orders.map(order => ({
+        ...order,
+        _sourceCollection: collectionName,
+        branchCode: order.branchCode || collectionName.replace('orders_', '').toUpperCase()
+      }));
+      
+      allOrders = allOrders.concat(ordersWithSource);
+      console.log(`✅ Found ${orders.length} orders in ${collectionName}`);
+      
+    } catch (error) {
+      console.warn(`⚠️ Could not search ${collectionName}:`, error.message);
     }
-    
-    console.log('✅ Deleted old auto-saved drafts:', totalDeleted);
-    
-    res.json({
-      success: true,
-      message: `Cleaned up ${totalDeleted} old auto-saved drafts`,
-      deletedCount: totalDeleted
-    });
-    
-  } catch (error) {
-    console.error('❌ Error cleaning up old drafts:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to cleanup old auto-saved drafts',
-      error: error.message
-    });
   }
-});
+  
+  // Sort by creation date (newest first)
+  allOrders.sort((a, b) => {
+    const dateA = new Date(a.createdAt || a.orderDate || 0);
+    const dateB = new Date(b.createdAt || b.orderDate || 0);
+    return dateB - dateA;
+  });
+  
+  console.log(`✅ Total orders found: ${allOrders.length}`);
+  return allOrders;
+}
 
-// @route   GET /api/orders/all
-// @desc    Get all orders from all branches (admin only)
-// @access  Private (Admin)
+// ===== API ROUTES =====
+
+// GET /api/orders/all - Get all orders
 router.get('/all', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
-    }
-
-    const { page = 1, limit = 50, status, search, startDate, endDate, occasion, includeDrafts = 'false' } = req.query;
+    console.log('📋 GET /api/orders/all called');
+    console.log('👤 User:', req.user.username, 'Role:', req.user.role, 'Branch:', req.user.branchCode || req.user.branch);
     
-    console.log('🔍 Admin fetching all orders with filters:', { status, search, startDate, endDate, occasion, includeDrafts });
+    const filters = {
+      branch: req.query.branch,
+      customerName: req.query.name,
+      phone: req.query.phone,
+      status: req.query.status,
+      orderDate: req.query.orderDate,
+      deliveryDate: req.query.deliveryDate
+    };
     
-    // Get all available branch codes from your branches collection
-    const branchesCollection = mongoose.connection.db.collection('branches');
-    const branches = await branchesCollection.find({}).toArray();
-    
-    const allOrders = [];
-    
-    // Fetch orders from each branch
-    for (const branch of branches) {
-      try {
-        const OrderModel = getOrderModel(branch.branchCode.toLowerCase());
-        let query = {};
-        
-        // Apply filters
-        if (status) query.status = status;
-        if (occasion) query.occasion = occasion;
-        if (startDate || endDate) {
-          query.orderDate = {};
-          if (startDate) query.orderDate.$gte = startDate;
-          if (endDate) query.orderDate.$lte = endDate;
-        }
-        if (search) {
-          query.$or = [
-            { customerName: { $regex: search, $options: 'i' } },
-            { phone: { $regex: search, $options: 'i' } },
-            { orderNumber: { $regex: search, $options: 'i' } }
-          ];
-        }
-        
-        // Exclude drafts unless specifically requested
-        if (includeDrafts !== 'true') {
-          query.isDraft = { $ne: true };
-        }
-        
-        const orders = await OrderModel.find(query)
-          .sort({ createdAt: -1 })
-          .lean();
-        
-        // Add branch info to each order
-        orders.forEach(order => {
-          order.branchCode = branch.branchCode;
-          order.branchName = branch.branchName;
-        });
-        
-        allOrders.push(...orders);
-      } catch (error) {
-        console.warn(`Failed to fetch orders from branch ${branch.branchCode}:`, error.message);
+    // Remove empty filters
+    Object.keys(filters).forEach(key => {
+      if (!filters[key] || filters[key].trim() === '') {
+        delete filters[key];
       }
-    }
-    
-    // Sort all orders by creation date
-    allOrders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    // Apply pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + parseInt(limit);
-    const paginatedOrders = allOrders.slice(startIndex, endIndex);
-    
-    console.log(`📊 Found ${allOrders.length} total orders, returning ${paginatedOrders.length}`);
-    
-    res.json({
-      orders: paginatedOrders,
-      totalPages: Math.ceil(allOrders.length / limit),
-      currentPage: parseInt(page),
-      total: allOrders.length
-    });
-  } catch (error) {
-    console.error('❌ Get all orders error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// @route   GET /api/orders/last-number/:prefix
-// @desc    Get last order number for prefix
-// @access  Private
-router.get('/last-number/:prefix', auth, async (req, res) => {
-  try {
-    const { prefix } = req.params;
-    const branchCode = prefix.split('-')[0].toLowerCase();
-    
-    console.log('🔍 Getting last number for prefix:', prefix, 'Branch:', branchCode);
-    
-    const OrderModel = getOrderModel(branchCode);
-    
-    // Only look at saved orders (not drafts) for number generation
-    const lastOrder = await OrderModel
-      .findOne({ 
-        orderNumber: new RegExp(`^${prefix}-`),
-        isDraft: { $ne: true }
-      })
-      .sort({ orderNumber: -1 });
-    
-    const lastNumber = lastOrder 
-      ? parseInt(lastOrder.orderNumber.split('-').pop())
-      : 0;
-    
-    console.log('📊 Last number found:', lastNumber);
-    res.json({ lastNumber });
-  } catch (error) {
-    console.error('Get last order number error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// @route   GET /api/orders/check-number
-// @desc    Check if order number exists
-// @access  Private
-router.get('/check-number', auth, async (req, res) => {
-  try {
-    const { orderNumber } = req.query;
-    
-    if (!orderNumber) {
-      return res.status(400).json({ message: 'Order number is required' });
-    }
-    
-    const branchCode = orderNumber.split('-')[0].toLowerCase();
-    const OrderModel = getOrderModel(branchCode);
-    
-    // Check for existing saved orders (not drafts)
-    const existingOrder = await OrderModel.findOne({ 
-      orderNumber,
-      isDraft: { $ne: true }
     });
     
-    res.json({ exists: !!existingOrder });
+    console.log('🔍 Applied filters:', filters);
+    
+    const orders = await fetchOrdersFromCollections(req.user, filters);
+    
+    // Limit response size for performance
+    const limitedOrders = orders.slice(0, parseInt(req.query.limit) || 100);
+    
+    console.log(`📊 Returning ${limitedOrders.length} orders`);
+    res.json(limitedOrders);
+    
   } catch (error) {
-    console.error('Check order number error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Error in /all route:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch orders',
+      error: error.message
+    });
   }
 });
 
-// @route   GET /api/orders/:branchCode
-// @desc    Get orders from specific branch
-// @access  Private
+// GET /api/orders/:branchCode - Get orders for specific branch
 router.get('/:branchCode', auth, async (req, res) => {
   try {
     const { branchCode } = req.params;
-    const { page = 1, limit = 50, status, search, startDate, endDate, occasion, includeDrafts = 'false' } = req.query;
+    console.log(`📋 GET /api/orders/${branchCode} called`);
     
-    console.log(`🔍 Fetching orders from branch: ${branchCode}`);
-    
-    // Ensure user can access this branch (unless admin)
-    if (req.user.role !== 'admin' && req.user.branchCode !== branchCode.toUpperCase()) {
-      return res.status(403).json({ message: 'Cannot view orders from other branches' });
-    }
-    
-    const OrderModel = getOrderModel(branchCode.toLowerCase());
-    let query = {};
-    
-    // Apply filters
-    if (status) query.status = status;
-    if (occasion) query.occasion = occasion;
-    if (startDate || endDate) {
-      query.orderDate = {};
-      if (startDate) query.orderDate.$gte = startDate;
-      if (endDate) query.orderDate.$lte = endDate;
-    }
-    if (search) {
-      query.$or = [
-        { customerName: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { orderNumber: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Exclude drafts unless specifically requested
-    if (includeDrafts !== 'true') {
-      query.isDraft = { $ne: true };
-    }
-    
-    const orders = await OrderModel.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
-    
-    const total = await OrderModel.countDocuments(query);
-    
-    // Add branch info to orders
-    orders.forEach(order => {
-      order.branchCode = branchCode.toUpperCase();
-    });
-    
-    console.log(`📊 Found ${total} orders in branch ${branchCode}, returning ${orders.length}`);
-    
-    res.json({
-      orders,
-      totalPages: Math.ceil(total / limit),
-      currentPage: parseInt(page),
-      total
-    });
-  } catch (error) {
-    console.error('❌ Get branch orders error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// @route   GET /api/orders/:branchCode/:orderId
-// @desc    Get specific order
-// @access  Private
-router.get('/:branchCode/:orderId', auth, async (req, res) => {
-  try {
-    const { branchCode, orderId } = req.params;
-    
-    console.log(`🔍 Getting specific order: ${orderId} from branch: ${branchCode}`);
-    
-    // Ensure user can only view orders from their branch (unless admin)
-    if (req.user.role !== 'admin' && req.user.branchCode !== branchCode.toUpperCase()) {
-      return res.status(403).json({ message: 'Cannot view orders from other branches' });
-    }
-    
-    const OrderModel = getOrderModel(branchCode.toLowerCase());
-    const order = await OrderModel.findById(orderId).lean();
-    
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-    
-    // Add branch info
-    order.branchCode = branchCode.toUpperCase();
-    
-    res.json(order);
-  } catch (error) {
-    console.error('❌ Get order error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-// @route   POST /api/orders/:branchCode
-// @desc    Save order to branch-specific collection
-// @access  Private
-router.post('/:branchCode', auth, async (req, res) => {
-  try {
-    const { branchCode } = req.params;
-    
-    console.log('🔍 === BRANCH CODE DEBUG ===');
-    console.log('📍 URL branchCode param:', branchCode);
-    console.log('👤 User branchCode:', req.user.branchCode);
-    console.log('👤 User role:', req.user.role);
-    console.log('📊 Request body branchCode:', req.body.branchCode);
-    console.log('📝 Is draft:', req.body.isDraft);
-    console.log('🔍 === END DEBUG ===');
-    
-    // ✅ FIXED: Consistent case handling for collections
-    const normalizedBranchCode = branchCode.toLowerCase();
-    console.log('📦 Using normalized branch code for collections:', normalizedBranchCode);
-    
-    const OrderModel = getOrderModel(normalizedBranchCode);
-    const CustomerModel = getCustomerModel(normalizedBranchCode);
-    
-    // ✅ FIXED: Use uppercase for comparison (user data is stored in uppercase)
-    const urlBranchCode = branchCode.toUpperCase();
-    const userBranchCode = req.user.branchCode ? req.user.branchCode.toUpperCase() : '';
-    
-    console.log('🔄 Comparison (both uppercase):');
-    console.log('📍 URL branch code:', urlBranchCode);
-    console.log('👤 User branch code:', userBranchCode);
-    
-    // Branch access validation
-    if (req.user.role !== 'admin') {
-      if (!userBranchCode) {
-        return res.status(403).json({ message: 'User has no assigned branch code' });
+    // Validate it's a branch code (2-3 characters, not ObjectId)
+    if (branchCode.length <= 3 && /^[A-Za-z]+$/i.test(branchCode)) {
+      const user = req.user;
+      
+      // Check permissions for non-admin users
+      if (user.role !== 'admin') {
+        const userBranchCode = (user.branchCode || user.branch || '').toLowerCase();
+        if (branchCode.toLowerCase() !== userBranchCode) {
+          return res.status(403).json({ 
+            message: 'Access denied. You can only view orders from your own branch.' 
+          });
+        }
       }
       
-      if (userBranchCode !== urlBranchCode) {
-        console.log('❌ Branch mismatch');
+      const collectionName = getOrderCollectionForBranch(branchCode);
+      console.log(`📊 Fetching from collection: ${collectionName}`);
+      
+      const db = mongoose.connection.db;
+      const collection = db.collection(collectionName);
+      
+      const orders = await collection.find({})
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .toArray();
+      
+      // Add branch code to orders if missing
+      const ordersWithBranch = orders.map(order => ({
+        ...order,
+        branchCode: order.branchCode || branchCode.toUpperCase(),
+        _sourceCollection: collectionName
+      }));
+      
+      console.log(`✅ Found ${orders.length} orders for branch ${branchCode}`);
+      res.json(ordersWithBranch);
+      
+    } else {
+      // If it's not a branch code, try as ObjectId
+      if (!mongoose.Types.ObjectId.isValid(branchCode)) {
+        return res.status(400).json({ 
+          message: 'Invalid order ID or branch code format' 
+        });
+      }
+      
+      // Try to find order across all collections
+      const orders = await fetchOrdersFromCollections(req.user);
+      const order = orders.find(o => o._id.toString() === branchCode);
+      
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+      
+      console.log('✅ Order found:', order.orderNumber);
+      res.json(order);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error in /:branchCode route:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch orders',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/orders - Default route (fallback to /all behavior)
+router.get('/', auth, async (req, res) => {
+  try {
+    console.log('📋 GET /api/orders (default) called');
+    
+    const orders = await fetchOrdersFromCollections(req.user);
+    const limitedOrders = orders.slice(0, 50);
+    
+    console.log(`✅ Found ${limitedOrders.length} orders`);
+    res.json(limitedOrders);
+    
+  } catch (error) {
+    console.error('❌ Error in default route:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch orders',
+      error: error.message
+    });
+  }
+});
+
+// ===== REPLACE YOUR EXISTING POST ROUTE WITH THIS =====
+// POST /api/orders - Create new order (UPDATED with changelog)
+router.post('/', auth, async (req, res) => {
+  try {
+    console.log('📝 Creating new order...');
+    const orderData = req.body;
+    const user = req.user;
+    
+    // Validate required fields
+    if (!orderData.customerName || !orderData.phone) {
+      return res.status(400).json({ 
+        message: 'Customer name and phone are required' 
+      });
+    }
+    
+    // Determine target branch
+    let targetBranchCode;
+    if (orderData.branchCode) {
+      targetBranchCode = orderData.branchCode.toUpperCase();
+    } else if (user.branchCode) {
+      targetBranchCode = user.branchCode.toUpperCase();
+    } else if (user.branch) {
+      targetBranchCode = user.branch.toUpperCase();
+    } else {
+      return res.status(400).json({ message: 'Branch information is required' });
+    }
+    
+    // Check permissions
+    if (user.role !== 'admin') {
+      const userBranchCode = (user.branchCode || user.branch || '').toUpperCase();
+      if (targetBranchCode !== userBranchCode) {
         return res.status(403).json({ 
-          message: `Cannot save orders to other branches. User: ${userBranchCode}, Requested: ${urlBranchCode}` 
+          message: 'You can only create orders for your own branch' 
         });
       }
     }
     
-    // Validate required fields
-    if (!req.body.orderNumber) {
-      return res.status(400).json({ message: 'Order number is required' });
-    }
+    // Get branch information
+    const Branch = getBranchModel();
+    const branch = await Branch.findOne({ branchCode: targetBranchCode });
     
-    if (!req.body.customerName || !req.body.phone) {
-      return res.status(400).json({ message: 'Customer name and phone are required' });
-    }
-    
-    // Create/Update customer record (only for non-draft orders)
-    if (!req.body.isDraft) {
-      const customerData = {
-        name: req.body.customerName,
-        phone: req.body.phone,
-        email: req.body.email || '',
-        address: req.body.address || '',
-        pincode: req.body.pincode || '',
-        city: req.body.city || '',
-        state: req.body.state || '',
-        branch: req.body.branch,
-        branchCode: urlBranchCode,
-        lastOrderDate: new Date()
-      };
-
-      console.log('👤 Creating/updating customer with data:', {
-        phone: customerData.phone,
-        branchCode: customerData.branchCode
-      });
-
-      await CustomerModel.findOneAndUpdate(
-        { phone: req.body.phone, branchCode: urlBranchCode },
-        {
-          ...customerData,
-          $inc: { totalOrders: 1, totalSpent: req.body.grandTotal || 0 }
-        },
-        { upsert: true, new: true }
-      );
-    }
-    
-    // Check for duplicate order number (only for non-draft orders)
-    if (!req.body.isDraft) {
-      const existingOrder = await OrderModel.findOne({ 
-        orderNumber: req.body.orderNumber,
-        isDraft: { $ne: true }
-      });
-      if (existingOrder) {
-        return res.status(409).json({ message: 'Order number already exists in this branch' });
-      }
-    }
-    
-    // Create order
-    const orderData = {
-      ...req.body,
-      branch: req.body.branch,
-      branchCode: urlBranchCode,
-      createdBy: req.user.username || req.user._id,
-      isDraft: req.body.isDraft || false
+    // Prepare order data
+    const finalOrderData = {
+      ...orderData,
+      branchCode: targetBranchCode,
+      branchName: branch ? branch.branchName : orderData.branchName,
+      createdBy: user.username || user.id,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
     
-    console.log('📋 Creating order with data:', {
-      orderNumber: orderData.orderNumber,
-      branchCode: orderData.branchCode,
-      branch: orderData.branch,
-      isDraft: orderData.isDraft,
-      status: orderData.status
-    });
+    // Generate order number if not provided
+    if (!finalOrderData.orderNumber) {
+      const collectionName = getOrderCollectionForBranch(targetBranchCode);
+      const db = mongoose.connection.db;
+      const collection = db.collection(collectionName);
+      
+      // Get last order number for this branch
+      const lastOrder = await collection.findOne(
+        { branchCode: targetBranchCode },
+        { sort: { createdAt: -1 } }
+      );
+      
+      let nextNumber = 1;
+      if (lastOrder && lastOrder.orderNumber) {
+        const match = lastOrder.orderNumber.match(/(\d+)$/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+        }
+      }
+      
+      finalOrderData.orderNumber = `${targetBranchCode}-${String(nextNumber).padStart(4, '0')}`;
+    }
     
-    const order = new OrderModel(orderData);
-    await order.save();
+    // Save to appropriate collection
+    const collectionName = getOrderCollectionForBranch(targetBranchCode);
+    const db = mongoose.connection.db;
+    const collection = db.collection(collectionName);
     
-    console.log('✅ Order saved successfully:', order.orderNumber, 'Draft:', order.isDraft);
+    const result = await collection.insertOne(finalOrderData);
     
-    res.status(201).json({
-      message: `Order ${order.isDraft ? 'draft' : ''} saved successfully`,
-      order
-    });
+    const savedOrder = {
+      _id: result.insertedId,
+      ...finalOrderData
+    };
+    
+    // ✅ NEW: CREATE CHANGELOG ENTRY FOR NEW ORDER
+    try {
+      await createChangelogEntry(
+        savedOrder._id,
+        savedOrder.orderNumber,
+        'created',
+        [], // No changes for new order
+        user,
+        req
+      );
+      console.log('📝 Changelog entry created for new order:', savedOrder.orderNumber);
+    } catch (changelogError) {
+      console.error('❌ Failed to create changelog entry:', changelogError);
+      // Don't fail the order creation if changelog fails
+    }
+    
+    console.log('✅ Order created:', savedOrder.orderNumber, 'in collection:', collectionName);
+    res.status(201).json(savedOrder);
+    
   } catch (error) {
-    console.error('❌ Save order error:', error);
-    
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ 
-        message: 'Validation error', 
-        details: error.message 
-      });
-    }
-    
-    if (error.name === 'BSONError') {
-      return res.status(400).json({ 
-        message: 'Invalid data format - possible ObjectId issue', 
-        details: error.message 
-      });
-    }
-    
-    if (error.code === 11000) {
-      return res.status(409).json({ 
-        message: 'Duplicate order number',
-        details: 'Order number already exists' 
-      });
-    }
-    
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('❌ Error creating order:', error);
+    res.status(500).json({ 
+      message: 'Failed to create order',
+      error: error.message
+    });
   }
 });
 
-// @route   PUT /api/orders/:branchCode/:orderId
-// @desc    Update existing order
-// @access  Private
-router.put('/:branchCode/:orderId', auth, async (req, res) => {
+// ===== REPLACE YOUR EXISTING PUT ROUTE WITH THIS =====
+// PUT /api/orders/:branchCode/:id - Update order (UPDATED with changelog)
+router.put('/:branchCode/:id', auth, async (req, res) => {
   try {
-    const { branchCode, orderId } = req.params;
+    const { branchCode, id } = req.params;
+    const updateData = req.body;
+    const user = req.user;
     
-    console.log(`🔄 Updating order: ${orderId} in branch: ${branchCode}`);
-    console.log('📝 Update data includes isDraft:', req.body.isDraft);
+    console.log(`🔄 Updating order ${id} in branch ${branchCode}`);
     
-    // Ensure user can only update orders from their branch (unless admin)
-    if (req.user.role !== 'admin' && req.user.branchCode !== branchCode.toUpperCase()) {
-      return res.status(403).json({ message: 'Cannot update orders from other branches' });
-    }
-    
-    const OrderModel = getOrderModel(branchCode.toLowerCase());
-    
-    // If converting from draft to saved, check for duplicates
-    if (req.body.isDraft === false) {
-      const existingOrder = await OrderModel.findOne({ 
-        orderNumber: req.body.orderNumber,
-        isDraft: { $ne: true },
-        _id: { $ne: orderId }
-      });
-      if (existingOrder) {
-        return res.status(409).json({ message: 'Order number already exists in this branch' });
+    // Check permissions
+    if (user.role !== 'admin') {
+      const userBranchCode = (user.branchCode || user.branch || '').toLowerCase();
+      if (branchCode.toLowerCase() !== userBranchCode) {
+        return res.status(403).json({ 
+          message: 'You can only update orders from your own branch' 
+        });
       }
     }
     
-    const order = await OrderModel.findByIdAndUpdate(
-      orderId,
-      { ...req.body, updatedAt: new Date() },
-      { new: true, runValidators: true }
+    const collectionName = getOrderCollectionForBranch(branchCode);
+    const db = mongoose.connection.db;
+    const collection = db.collection(collectionName);
+    
+    // ✅ NEW: Get the old order data BEFORE updating (for changelog)
+    const oldOrder = await collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+    if (!oldOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    
+    // Prepare update data
+    const finalUpdateData = {
+      ...updateData,
+      updatedBy: user.username || user.id,
+      updatedAt: new Date()
+    };
+    
+    // Remove system fields that shouldn't be updated
+    const { _id: removeId, createdAt, __v, ...cleanUpdateData } = finalUpdateData;
+    
+    const result = await collection.findOneAndUpdate(
+      { _id: new mongoose.Types.ObjectId(id) },
+      { $set: cleanUpdateData },
+      { returnDocument: 'after' }
     );
     
+    if (!result.value) {
+      return res.status(404).json({ message: 'Order not found after update' });
+    }
+    
+    // ✅ NEW: GENERATE CHANGES AND CREATE CHANGELOG ENTRY
+    try {
+      const changes = generateChanges(oldOrder, result.value);
+      
+      // Only create changelog entry if there are actual changes
+      if (changes.length > 0) {
+        let action = 'updated';
+        
+        // Determine specific action type based on what changed
+        if (changes.some(c => c.field === 'status')) {
+          action = 'status_changed';
+        } else if (changes.some(c => c.field === 'orderProgress')) {
+          action = 'progress_updated';
+        } else if (changes.some(c => c.field === 'advancePaid' || c.field === 'balancePaid')) {
+          action = 'payment_added';
+        }
+        
+        await createChangelogEntry(
+          result.value._id,
+          result.value.orderNumber,
+          action,
+          changes,
+          user,
+          req
+        );
+        
+        console.log('📝 Changelog entry created for order update:', result.value.orderNumber, 'Changes:', changes.length);
+      } else {
+        console.log('ℹ️ No changes detected for order:', result.value.orderNumber);
+      }
+    } catch (changelogError) {
+      console.error('❌ Failed to create changelog entry:', changelogError);
+      // Don't fail the order update if changelog fails
+    }
+    
+    console.log('✅ Order updated:', result.value.orderNumber);
+    res.json(result.value);
+    
+  } catch (error) {
+    console.error('❌ Error updating order:', error);
+    res.status(500).json({ 
+      message: 'Failed to update order',
+      error: error.message
+    });
+  }
+});
+
+
+// ===== REPLACE YOUR EXISTING DELETE ROUTE WITH THIS =====
+// DELETE /api/orders/:branchCode/:id - Delete order (UPDATED with changelog)
+router.delete('/:branchCode/:id', auth, async (req, res) => {
+  try {
+    const { branchCode, id } = req.params;
+    const user = req.user;
+    
+    console.log(`🗑️ Deleting order ${id} from branch ${branchCode}`);
+    
+    // Only admins can delete orders
+    if (user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can delete orders' });
+    }
+    
+    const collectionName = getOrderCollectionForBranch(branchCode);
+    const db = mongoose.connection.db;
+    const collection = db.collection(collectionName);
+    
+    const order = await collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
     
-    console.log('✅ Order updated successfully:', order.orderNumber, 'Draft:', order.isDraft);
+    // Soft delete - change status instead of removing
+    const result = await collection.findOneAndUpdate(
+      { _id: new mongoose.Types.ObjectId(id) },
+      { 
+        $set: { 
+          status: 'cancelled',
+          updatedBy: user.username || user.id,
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
     
-    res.json({
-      message: `Order ${order.isDraft ? 'draft' : ''} updated successfully`,
-      order
-    });
+    // ✅ NEW: CREATE CHANGELOG ENTRY FOR DELETION
+    try {
+      await createChangelogEntry(
+        order._id,
+        order.orderNumber,
+        'deleted',
+        [{ 
+          field: 'status', 
+          oldValue: order.status || 'active', 
+          newValue: 'cancelled',
+          displayName: 'Order Status'
+        }],
+        user,
+        req
+      );
+      console.log('📝 Changelog entry created for order deletion:', order.orderNumber);
+    } catch (changelogError) {
+      console.error('❌ Failed to create changelog entry:', changelogError);
+      // Don't fail the deletion if changelog fails
+    }
+    
+    console.log('✅ Order cancelled:', result.value.orderNumber);
+    res.json({ message: 'Order cancelled successfully', order: result.value });
+    
   } catch (error) {
-    console.error('❌ Update order error:', error);
-    
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ 
-        message: 'Validation error', 
-        details: error.message 
-      });
-    }
-    
-    if (error.name === 'BSONError') {
-      return res.status(400).json({ 
-        message: 'Invalid data format', 
-        details: error.message 
-      });
-    }
-    
-    if (error.code === 11000) {
-      return res.status(409).json({ 
-        message: 'Duplicate order number',
-        details: 'Order number already exists' 
-      });
-    }
-    
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('❌ Error deleting order:', error);
+    res.status(500).json({ 
+      message: 'Failed to delete order',
+      error: error.message
+    });
   }
 });
 
-// @route   DELETE /api/orders/:branchCode/:orderId
-// @desc    Delete order (admin only)
-// @access  Private (Admin)
-router.delete('/:branchCode/:orderId', auth, adminOnly, async (req, res) => {
+// GET /api/orders/stats/summary - Get order statistics
+router.get('/stats/summary', auth, async (req, res) => {
   try {
-    const { branchCode, orderId } = req.params;
+    const { branch } = req.query;
+    const user = req.user;
     
-    console.log(`🗑️ Admin deleting order: ${orderId} from branch: ${branchCode}`);
+    console.log('📊 Calculating order statistics...');
     
-    const OrderModel = getOrderModel(branchCode.toLowerCase());
+    const filters = {};
+    if (branch) filters.branch = branch;
     
-    const order = await OrderModel.findByIdAndDelete(orderId);
+    const orders = await fetchOrdersFromCollections(user, filters);
     
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
+    const stats = {
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, order) => sum + (Number(order.grandTotal) || 0), 0),
+      totalAdvancePaid: orders.reduce((sum, order) => sum + (Number(order.advancePaid) || 0), 0),
+      totalBalancePaid: orders.reduce((sum, order) => sum + (Number(order.balancePaid) || 0), 0),
+      pendingBalance: orders.reduce((sum, order) => sum + (Number(order.balance) || 0), 0),
+      totalBoxes: orders.reduce((sum, order) => sum + (Number(order.totalBoxCount) || 0), 0)
+    };
     
-    console.log('✅ Order deleted successfully:', order.orderNumber);
+    console.log('✅ Order stats calculated:', stats);
+    res.json(stats);
     
-    res.json({ message: 'Order deleted successfully' });
   } catch (error) {
-    console.error('❌ Delete order error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('❌ Error calculating stats:', error);
+    res.status(500).json({ 
+      message: 'Failed to calculate statistics',
+      error: error.message
+    });
   }
 });
 
-// @route   GET /api/orders
-// @desc    Get orders for current user's branch (fallback route)
-// @access  Private
-router.get('/', auth, async (req, res) => {
+// Debug route (remove in production)
+router.get('/debug/collections', async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, search, includeDrafts = 'false' } = req.query;
+    const collections = await getOrderCollectionNames();
+    const db = mongoose.connection.db;
     
-    console.log('📋 Fallback route - getting orders for user branch:', req.user.branchCode);
+    const result = {
+      collections,
+      details: []
+    };
     
-    if (!req.user.branchCode) {
-      return res.status(400).json({ message: 'User has no assigned branch code' });
+    for (const collectionName of collections) {
+      const collection = db.collection(collectionName);
+      const count = await collection.countDocuments();
+      result.details.push({ name: collectionName, count });
     }
     
-    const OrderModel = getOrderModel(req.user.branchCode.toLowerCase());
-    let query = {};
-    
-    if (status) query.status = status;
-    if (search) {
-      query.$or = [
-        { customerName: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { orderNumber: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Exclude drafts unless specifically requested
-    if (includeDrafts !== 'true') {
-      query.isDraft = { $ne: true };
-    }
-    
-    const orders = await OrderModel.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
-    
-    const total = await OrderModel.countDocuments(query);
-    
-    // Add branch info to orders
-    orders.forEach(order => {
-      order.branchCode = req.user.branchCode;
-    });
-    
-    console.log(`📊 Found ${total} orders in user branch, returning ${orders.length}`);
-    
-    res.json({
-      orders,
-      totalPages: Math.ceil(total / limit),
-      currentPage: parseInt(page),
-      total
-    });
+    res.json(result);
   } catch (error) {
-    console.error('❌ Get orders error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 

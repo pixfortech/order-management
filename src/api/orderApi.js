@@ -1,18 +1,15 @@
 // src/api/orderApi.js
 const getApiUrl = () => {
-  // Check environment variable first
   if (process.env.REACT_APP_API_URL) {
     console.log('🌐 Using environment API URL:', process.env.REACT_APP_API_URL);
     return process.env.REACT_APP_API_URL;
   }
-  
-  // Fallback based on hostname
+
   if (window.location.hostname === 'localhost') {
     console.log('🏠 Using localhost API URL');
     return 'http://localhost:5000';
   }
-  
-  // Use your actual Render deployment URL
+
   const renderUrl = 'https://order-management-fbre.onrender.com';
   console.log('☁️ Using Render URL:', renderUrl);
   return renderUrl;
@@ -31,18 +28,18 @@ const getAuthToken = () => {
 
 const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE}${endpoint}`;
-  
+
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
     },
   };
-  
+
   const token = getAuthToken();
   if (token) {
     defaultOptions.headers['Authorization'] = `Bearer ${token}`;
   }
-  
+
   const finalOptions = {
     ...defaultOptions,
     ...options,
@@ -51,18 +48,18 @@ const apiCall = async (endpoint, options = {}) => {
       ...options.headers,
     },
   };
-  
+
   console.log('🔗 API Call to:', url);
-  
+
   try {
     const response = await fetch(url, finalOptions);
     console.log('📥 Response status:', response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ API Error Response:', errorText);
     }
-    
+
     return response;
   } catch (error) {
     console.error('❌ Network error:', error);
@@ -77,43 +74,37 @@ export const saveOrder = async (orderData, editingOrderId = null) => {
     console.log('📊 Order data branch:', orderData.branch);
     console.log('📊 Is draft:', orderData.isDraft);
     console.log('🔍 === END FRONTEND DEBUG ===');
-    
+
     const branchCode = orderData.branchCode ? orderData.branchCode.toLowerCase() : '';
-    
-    if (!branchCode) {
-      throw new Error('Branch code is missing from order data');
-    }
-    
+    if (!branchCode) throw new Error('Branch code is missing from order data');
+
+    // Ensure balancePaid field is present
+    const finalOrderData = {
+      ...orderData,
+      balancePaid: orderData.balancePaid !== undefined ? orderData.balancePaid : 0,
+    };
+
     console.log('💾 Saving order to branch collection:', `orders_${branchCode}`);
     console.log('🔗 API endpoint will be:', `/orders/${branchCode}`);
-    
-    if (editingOrderId) {
-      const response = await apiCall(`/orders/${branchCode}/${editingOrderId}`, {
-        method: 'PUT',
-        body: JSON.stringify(orderData),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        console.error('❌ Update order error response:', errorData);
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    } else {
-      const response = await apiCall(`/orders/${branchCode}`, {
-        method: 'POST',
-        body: JSON.stringify(orderData),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        console.error('❌ Save order error response:', errorData);
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
+
+    const endpoint = editingOrderId
+      ? `/orders/${branchCode}/${editingOrderId}`
+      : `/orders/${branchCode}`;
+
+    const method = editingOrderId ? 'PUT' : 'POST';
+
+    const response = await apiCall(endpoint, {
+      method,
+      body: JSON.stringify(finalOrderData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      console.error(`❌ ${method === 'POST' ? 'Save' : 'Update'} order error response:`, errorData);
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
+
+    return await response.json();
   } catch (error) {
     console.error('❌ Save order error:', error);
     throw error;

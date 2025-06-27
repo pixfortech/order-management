@@ -34,8 +34,9 @@ app.use(cors({
     'http://localhost:3000',
     'https://order-management-six-liart.vercel.app',
     'https://order-management-six-liart-*.vercel.app',
-	/^https:\/\/order-management-.*\.vercel\.app$/,
+    /^https:\/\/order-management-.*\.vercel\.app$/,
     'http://192.168.0.141:3000',
+    'http://192.168.0.177:3000',
   ],
   credentials: true
 }));
@@ -60,164 +61,300 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// ===== DYNAMIC BRANCH MAPPING SYSTEM =====
+// ===== BRANCH MANAGEMENT SYSTEM =====
 
-// Cache for branch mappings to avoid repeated database calls
-let branchCache = {
-  nameToCode: {},
-  codeToName: {},
-  lastUpdated: null,
-  cacheValidityMs: 5 * 60 * 1000 // 5 minutes cache
-};
+class BranchManager {
+  constructor() {
+    this.cache = {
+      branches: new Map(),
+      nameToCode: new Map(),
+      codeToName: new Map(),
+      lastUpdated: null,
+      cacheValidityMs: 5 * 60 * 1000 // 5 minutes
+    };
+  }
 
-// Function to refresh branch cache from database (UPDATED)
-async function refreshBranchCache() {
-  try {
-    console.log('🔄 Refreshing branch cache from database...');
+  async initialize() {
+    await this.refreshCache();
+  }
+
+  async refreshCache() {
+    try {
+      console.log('🔄 Refreshing branch cache from database...');
+      
+      if (!db) {
+        throw new Error('Database not connected');
+      }
+      
+      const branchesCollection = db.collection('branches');
+      const branches = await branchesCollection.find({ isActive: { $ne: false } }).toArray();
+      
+      // Clear existing cache
+      this.cache.branches.clear();
+      this.cache.nameToCode.clear();
+      this.cache.codeToName.clear();
+      
+      branches.forEach(branch => {
+        const code = branch.branchCode?.trim()?.toUpperCase();
+        const name = branch.branchName?.trim();
+        
+        if (code && name) {
+          // Store branch data
+          this.cache.branches.set(code, branch);
+          
+          // Create bidirectional mappings (case-insensitive)
+          this.cache.nameToCode.set(name.toLowerCase(), code);
+          this.cache.codeToName.set(code, name);
+        }
+      });
+      
+      this.cache.lastUpdated = new Date();
+      
+      console.log('✅ Branch cache refreshed:', {
+        branches: this.cache.branches.size,
+        mappings: this.cache.nameToCode.size
+      });
+      
+    } catch (error) {
+      console.error('❌ Error refreshing branch cache:', error);
+      // Keep existing cache on error
+    }
+  }
+
+  async ensureCacheValid() {
+    if (!this.cache.lastUpdated || 
+        (new Date() - this.cache.lastUpdated) > this.cache.cacheValidityMs) {
+      await this.refreshCache();
+    }
+  }
+
+  async getBranchCodeFromName(name) {
+    if (!name) return null;
+    await this.ensureCacheValid();
+    return this.cache.nameToCode.get(name.trim().toLowerCase()) || null;
+  }
+
+  async getBranchNameFromCode(code) {
+    if (!code) return null;
+    await this.ensureCacheValid();
+    return this.cache.codeToName.get(code.trim().toUpperCase()) || code;
+  }
+
+  async getAllBranchCodes() {
+    await this.ensureCacheValid();
+    return Array.from(this.cache.branches.keys());
+  }
+
+  async getBranch(identifier) {
+    await this.ensureCacheValid();
     
-    if (!db) {
-      throw new Error('Database not connected');
+    // Try as code first
+    const upperIdentifier = identifier?.trim()?.toUpperCase();
+    if (this.cache.branches.has(upperIdentifier)) {
+      return this.cache.branches.get(upperIdentifier);
     }
     
-    const branchesCollection = db.collection('branches');
-    const branches = await branchesCollection.find({}).toArray();
+    // Try as name
+    const code = await this.getBranchCodeFromName(identifier);
+    if (code && this.cache.branches.has(code)) {
+      return this.cache.branches.get(code);
+    }
     
-    const nameToCode = {};
-    const codeToName = {};
+    return null;
+  }
+
+  async getCustomerCollectionName(branchCode) {
+    if (!branchCode) return null;
     
-    branches.forEach(branch => {
-      // Store both original case and lowercase for flexible matching
-      const originalCode = branch.branchCode;
-      const lowerCode = branch.branchCode.toLowerCase();
-      const originalName = branch.branchName;
-      const lowerName = branch.branchName.toLowerCase();
-      
-      // Map names to codes (both cases)
-      nameToCode[originalName] = originalCode;
-      nameToCode[lowerName] = originalCode;
-      
-      // Map codes to names (both cases)
-      codeToName[originalCode] = originalName;
-      codeToName[lowerCode] = originalName;
-      codeToName[originalCode.toLowerCase()] = originalName;
-      codeToName[lowerCode.toUpperCase()] = originalName;
+    const code = branchCode.trim().toLowerCase();
+    const collectionName = `customers_${code}`;
+    
+    // Verify collection exists
+    try {
+      const collections = await db.listCollections({ name: collectionName }).toArray();
+      if (collections.length > 0) {
+        return collectionName;
+      }
+    } catch (error) {
+      console.warn('Error checking collection existence:', error.message);
+    }
+    
+    return collectionName; // Return even if not exists for creation
+  }
+}
+
+// Add this section to your server.js after the BranchManager class
+
+// ===== ORDER MANAGEMENT ENHANCEMENTS =====
+
+/**
+ * Enhanced customer order search that works with branch-specific order collections
+ */
+async function findCustomerOrdersAcrossBranches(customer) {
+  try {
+    // Get all order collections
+    const collections = await db.listCollections().toArray();
+    const orderCollections = collections
+      .filter(c => c.name === 'orders' || c.name.startsWith('orders_'))
+      .map(c => c.name);
+    
+    console.log('🔍 Searching for customer orders in collections:', orderCollections);
+    
+    let allOrders = [];
+    
+    for (const collectionName of orderCollections) {
+      try {
+        const collection = db.collection(collectionName);
+        
+        // Search by exact name match and phone
+        const queries = [];
+        
+        if (customer.name) {
+          queries.push({ customerName: customer.name });
+          queries.push({ customerName: new RegExp(customer.name.replace(/\s+/g, '\\s+'), 'i') });
+        }
+        
+        if (customer.phone) {
+          queries.push({ phone: customer.phone });
+        }
+        
+        for (const query of queries) {
+          const orders = await collection.find(query).toArray();
+          if (orders.length > 0) {
+            console.log(`✅ Found ${orders.length} orders in ${collectionName} for query:`, query);
+            // Add source collection info
+            const ordersWithSource = orders.map(order => ({
+              ...order,
+              _sourceCollection: collectionName
+            }));
+            allOrders = allOrders.concat(ordersWithSource);
+          }
+        }
+        
+      } catch (error) {
+        console.warn(`⚠️ Could not search ${collectionName}:`, error.message);
+      }
+    }
+    
+    // Deduplicate orders
+    const uniqueOrders = deduplicateOrders(allOrders);
+    
+    // Sort by date (newest first)
+    uniqueOrders.sort((a, b) => 
+      new Date(b.createdAt || b.orderDate || 0) - new Date(a.createdAt || a.orderDate || 0)
+    );
+    
+    // Calculate statistics
+    const stats = calculateOrderStats(uniqueOrders);
+    
+    console.log(`📊 Customer order search complete: ${uniqueOrders.length} unique orders found`);
+    
+    return { orders: uniqueOrders, stats };
+    
+  } catch (error) {
+    console.error('❌ Error finding customer orders:', error);
+    return { 
+      orders: [], 
+      stats: { totalOrders: 0, distinctBoxes: 0, totalBoxes: 0, totalAmount: 0 }
+    };
+  }
+}
+
+// Update the existing customer details route to use the new order search
+app.get('/api/customers/:id/details', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('📊 Fetching customer details for:', id);
+    
+    // Find customer
+    const { customer, branchCode } = await findCustomerAcrossBranches(id);
+    
+    if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+    
+    // Find orders for this customer using enhanced search
+    const { orders, stats } = await findCustomerOrdersAcrossBranches(customer);
+    
+    console.log('✅ Customer details fetched:', {
+      customerName: customer.name,
+      ordersCount: orders.length,
+      stats
     });
     
-    branchCache = {
-      nameToCode,
-      codeToName,
-      lastUpdated: new Date(),
-      cacheValidityMs: 5 * 60 * 1000
-    };
-    
-    console.log('✅ Branch cache refreshed:', {
-      branches: branches.length,
-      mappings: Object.keys(nameToCode).length
+    res.json({
+      customer: {
+        ...customer,
+        branchCode,
+        branchName: await branchManager.getBranchNameFromCode(branchCode)
+      },
+      orders,
+      stats
     });
     
   } catch (error) {
-    console.error('❌ Error refreshing branch cache:', error);
-    branchCache = {
-      nameToCode: {},
-      codeToName: {},
-      lastUpdated: new Date(),
-      cacheValidityMs: 5 * 60 * 1000
+    console.error('❌ Error fetching customer details:', error);
+    res.status(500).json({ message: 'Failed to fetch customer details', error: error.message });
+  }
+});
+
+// Add a route to get order collection info (for debugging)
+app.get('/api/debug/order-collections', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+    
+    const collections = await db.listCollections().toArray();
+    const orderCollections = collections.filter(c => 
+      c.name === 'orders' || c.name.startsWith('orders_')
+    );
+    
+    const result = {
+      totalCollections: collections.length,
+      orderCollections: [],
+      summary: {
+        totalOrders: 0,
+        collectionCount: orderCollections.length
+      }
     };
-  }
-}
-
-// Function to get branch code from name (UPDATED - case insensitive)
-async function getBranchCodeFromName(name) {
-  if (!name) return null;
-  
-  // Check if cache needs refresh
-  if (!branchCache.lastUpdated || 
-      (new Date() - branchCache.lastUpdated) > branchCache.cacheValidityMs) {
-    await refreshBranchCache();
-  }
-  
-  // Try exact match first, then lowercase
-  return branchCache.nameToCode[name] || 
-         branchCache.nameToCode[name.toLowerCase()] || 
-         null;
-}
-
-// Function to get branch name from code (with automatic cache refresh)
-async function getBranchNameFromCode(code) {
-  if (!code) return null;
-  
-  // Check if cache needs refresh
-  if (!branchCache.lastUpdated || 
-      (new Date() - branchCache.lastUpdated) > branchCache.cacheValidityMs) {
-    await refreshBranchCache();
-  }
-  
-  // Try exact match first, then case variations
-  return branchCache.codeToName[code] || 
-         branchCache.codeToName[code.toLowerCase()] || 
-         branchCache.codeToName[code.toUpperCase()] || 
-         code;
-}
-
-// Function to get branch code from name (with automatic cache refresh)
-async function getBranchCodeFromName(name) {
-  if (!name) return null;
-  
-  // Check if cache needs refresh
-  if (!branchCache.lastUpdated || 
-      (new Date() - branchCache.lastUpdated) > branchCache.cacheValidityMs) {
-    await refreshBranchCache();
-  }
-  
-  return branchCache.nameToCode[name.toLowerCase()] || null;
-}
-
-// Function to get all available branch codes (UPDATED)
-async function getAllBranchCodes() {
-  if (!branchCache.lastUpdated || 
-      (new Date() - branchCache.lastUpdated) > branchCache.cacheValidityMs) {
-    await refreshBranchCache();
-  }
-  
-  // Get unique codes from the cache, prioritizing original case
-  const codes = new Set();
-  Object.values(branchCache.nameToCode).forEach(code => {
-    if (code && code.length <= 3) { // Assume branch codes are 2-3 characters
-      codes.add(code);
+    
+    for (const collection of orderCollections) {
+      try {
+        const orderCollection = db.collection(collection.name);
+        const count = await orderCollection.countDocuments();
+        const sampleOrder = await orderCollection.findOne();
+        
+        result.orderCollections.push({
+          name: collection.name,
+          count,
+          branchCode: collection.name.replace('orders_', '').toUpperCase(),
+          hasOrders: count > 0,
+          sampleOrderNumber: sampleOrder?.orderNumber
+        });
+        
+        result.summary.totalOrders += count;
+        
+      } catch (error) {
+        console.error(`❌ Error checking ${collection.name}:`, error.message);
+      }
     }
-  });
-  
-  return Array.from(codes);
-}
-
-// NEW HELPER FUNCTION: Get collection name with case-insensitive matching
-async function getCustomerCollectionName(branchCode) {
-  if (!branchCode) return null;
-  
-  // Try different case variations for collection names
-  const variations = [
-    `customers_${branchCode.toLowerCase()}`,
-    `customers_${branchCode.toUpperCase()}`,
-    `customers_${branchCode}`
-  ];
-  
-  // Check which collection actually exists
-  const collections = await db.listCollections().toArray();
-  const existingCollections = collections.map(c => c.name);
-  
-  for (const variation of variations) {
-    if (existingCollections.includes(variation)) {
-      return variation;
-    }
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Error getting order collection info:', error);
+    res.status(500).json({ message: 'Failed to get collection info', error: error.message });
   }
-  
-  // Default to lowercase if none found
-  return `customers_${branchCode.toLowerCase()}`;
-}
+});
+
+// Initialize branch manager
+const branchManager = new BranchManager();
 
 // ===== CUSTOMER API ROUTES =====
 
-// GET /api/customers - Get all customers (UPDATED for case-insensitive)
+// GET /api/customers - Get all customers
 app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
     const { branch } = req.query;
@@ -228,75 +365,26 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
     let customers = [];
     
     if (user.role === 'admin') {
-      // Admin can see all customers from all branches
       if (branch) {
-        // If specific branch requested
-        const collectionName = await getCustomerCollectionName(branch);
-        console.log('📊 Fetching from collection:', collectionName);
-        
-        try {
-          const collection = db.collection(collectionName);
-          customers = await collection.find({}).toArray();
-          
-          // Add branch info to each customer
-          const branchName = await getBranchNameFromCode(branch);
-          customers = customers.map(customer => ({
-            ...customer,
-            branchCode: customer.branchCode || branch,
-            branchName: customer.branchName || branchName
-          }));
-        } catch (collectionError) {
-          console.warn(`⚠️ Collection ${collectionName} not found:`, collectionError.message);
+        // Fetch from specific branch
+        const branchCode = await branchManager.getBranchCodeFromName(branch);
+        if (branchCode) {
+          customers = await fetchCustomersFromBranch(branchCode);
         }
       } else {
-        // Fetch from all branch collections
-        const branchCodes = await getAllBranchCodes();
-        console.log('🔍 Available branch codes:', branchCodes);
+        // Fetch from all branches
+        const branchCodes = await branchManager.getAllBranchCodes();
         
         for (const branchCode of branchCodes) {
-          const collectionName = await getCustomerCollectionName(branchCode);
-          console.log('📊 Fetching from collection:', collectionName);
-          
-          try {
-            const collection = db.collection(collectionName);
-            const branchCustomers = await collection.find({}).toArray();
-            
-            // Add branch info to each customer
-            const branchName = await getBranchNameFromCode(branchCode);
-            const customersWithBranch = branchCustomers.map(customer => ({
-              ...customer,
-              branchCode: customer.branchCode || branchCode,
-              branchName: customer.branchName || branchName
-            }));
-            
-            customers = customers.concat(customersWithBranch);
-          } catch (collectionError) {
-            console.warn(`⚠️ Collection ${collectionName} not found:`, collectionError.message);
-          }
+          const branchCustomers = await fetchCustomersFromBranch(branchCode);
+          customers = customers.concat(branchCustomers);
         }
       }
     } else {
-      // Non-admin users can only see their branch customers
-      const userBranchCode = await getBranchCodeFromName(user.branchName || user.branch);
+      // Non-admin: only their branch
+      const userBranchCode = await branchManager.getBranchCodeFromName(user.branchName || user.branch);
       if (userBranchCode) {
-        const collectionName = await getCustomerCollectionName(userBranchCode);
-        console.log('📊 Fetching from collection:', collectionName);
-        
-        try {
-          const collection = db.collection(collectionName);
-          customers = await collection.find({}).toArray();
-          
-          // Add branch info to each customer
-          const branchName = await getBranchNameFromCode(userBranchCode);
-          customers = customers.map(customer => ({
-            ...customer,
-            branchCode: customer.branchCode || userBranchCode,
-            branchName: customer.branchName || branchName
-          }));
-        } catch (collectionError) {
-          console.warn(`⚠️ Collection ${collectionName} not found:`, collectionError.message);
-          customers = [];
-        }
+        customers = await fetchCustomersFromBranch(userBranchCode);
       }
     }
     
@@ -308,6 +396,27 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch customers', error: error.message });
   }
 });
+
+// Helper function to fetch customers from a specific branch
+async function fetchCustomersFromBranch(branchCode) {
+  try {
+    const collectionName = await branchManager.getCustomerCollectionName(branchCode);
+    const collection = db.collection(collectionName);
+    const customers = await collection.find({}).toArray();
+    
+    const branchName = await branchManager.getBranchNameFromCode(branchCode);
+    
+    return customers.map(customer => ({
+      ...customer,
+      branchCode: customer.branchCode || branchCode,
+      branchName: customer.branchName || branchName
+    }));
+    
+  } catch (error) {
+    console.warn(`⚠️ Error fetching from branch ${branchCode}:`, error.message);
+    return [];
+  }
+}
 
 // POST /api/customers - Create new customer
 app.post('/api/customers', authenticateToken, async (req, res) => {
@@ -327,37 +436,38 @@ app.post('/api/customers', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Phone number must be exactly 10 digits' });
     }
     
-    // Get branch code dynamically
-    const targetBranchCode = branchCode || await getBranchCodeFromName(branch);
+    // Get target branch
+    const targetBranchCode = branchCode || await branchManager.getBranchCodeFromName(branch);
     if (!targetBranchCode) {
       return res.status(400).json({ message: 'Invalid branch specified' });
     }
     
     // Check permissions
     if (user.role !== 'admin') {
-      const userBranchCode = await getBranchCodeFromName(user.branchName || user.branch);
+      const userBranchCode = await branchManager.getBranchCodeFromName(user.branchName || user.branch);
       if (targetBranchCode !== userBranchCode) {
         return res.status(403).json({ message: 'You can only add customers to your own branch' });
       }
     }
     
-    const collectionName = `customers_${targetBranchCode.toLowerCase()}`;
-    console.log('📊 Adding to collection:', collectionName);
-    
-    // Check if customer already exists (by phone)
+    const collectionName = await branchManager.getCustomerCollectionName(targetBranchCode);
     const collection = db.collection(collectionName);
+    
+    // Check if customer already exists
     const existingCustomer = await collection.findOne({ phone: phone });
     if (existingCustomer) {
       return res.status(400).json({ message: 'Customer with this phone number already exists' });
     }
     
+    const branchName = await branchManager.getBranchNameFromCode(targetBranchCode);
+    
     const customerData = {
-      name,
-      phone,
-      email: email || null,
-      address: address || null,
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email?.trim() || null,
+      address: address?.trim() || null,
       branchCode: targetBranchCode,
-      branchName: branch,
+      branchName: branchName,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -397,20 +507,20 @@ app.put('/api/customers/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Phone number must be exactly 10 digits' });
     }
     
-    const targetBranchCode = branchCode || await getBranchCodeFromName(branch);
+    const targetBranchCode = branchCode || await branchManager.getBranchCodeFromName(branch);
     if (!targetBranchCode) {
       return res.status(400).json({ message: 'Invalid branch specified' });
     }
     
     // Check permissions
     if (user.role !== 'admin') {
-      const userBranchCode = await getBranchCodeFromName(user.branchName || user.branch);
+      const userBranchCode = await branchManager.getBranchCodeFromName(user.branchName || user.branch);
       if (targetBranchCode !== userBranchCode) {
         return res.status(403).json({ message: 'You can only update customers in your own branch' });
       }
     }
     
-    const collectionName = `customers_${targetBranchCode.toLowerCase()}`;
+    const collectionName = await branchManager.getCustomerCollectionName(targetBranchCode);
     const collection = db.collection(collectionName);
     
     // Check if customer exists
@@ -419,7 +529,7 @@ app.put('/api/customers/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Customer not found' });
     }
     
-    // Check if phone is being changed and if new phone already exists
+    // Check for duplicate phone (excluding current customer)
     if (phone !== existingCustomer.phone) {
       const phoneExists = await collection.findOne({ 
         phone: phone, 
@@ -430,13 +540,15 @@ app.put('/api/customers/:id', authenticateToken, async (req, res) => {
       }
     }
     
+    const branchName = await branchManager.getBranchNameFromCode(targetBranchCode);
+    
     const updateData = {
-      name,
-      phone,
-      email: email || null,
-      address: address || null,
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email?.trim() || null,
+      address: address?.trim() || null,
       branchCode: targetBranchCode,
-      branchName: branch,
+      branchName: branchName,
       updatedAt: new Date()
     };
     
@@ -463,39 +575,27 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
     
     console.log('🗑️ Deleting customer:', id);
     
-    // Find customer across all branch collections
-    let customerFound = false;
-    const branchCodes = await getAllBranchCodes();
+    // Find customer across branches
+    const { customer, branchCode } = await findCustomerAcrossBranches(id);
     
-    for (const branchCode of branchCodes) {
-      const collectionName = `customers_${branchCode}`;
-      const collection = db.collection(collectionName);
-      
-      try {
-        const customer = await collection.findOne({ _id: new ObjectId(id) });
-        if (customer) {
-          // Check permissions
-          if (user.role !== 'admin') {
-            const userBranchCode = await getBranchCodeFromName(user.branchName || user.branch);
-            if (branchCode !== userBranchCode) {
-              return res.status(403).json({ message: 'You can only delete customers from your own branch' });
-            }
-          }
-          
-          await collection.deleteOne({ _id: new ObjectId(id) });
-          customerFound = true;
-          console.log('✅ Customer deleted from', collectionName);
-          break;
-        }
-      } catch (collectionError) {
-        console.warn(`⚠️ Error checking collection ${collectionName}:`, collectionError.message);
-      }
-    }
-    
-    if (!customerFound) {
+    if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }
     
+    // Check permissions
+    if (user.role !== 'admin') {
+      const userBranchCode = await branchManager.getBranchCodeFromName(user.branchName || user.branch);
+      if (branchCode !== userBranchCode) {
+        return res.status(403).json({ message: 'You can only delete customers from your own branch' });
+      }
+    }
+    
+    const collectionName = await branchManager.getCustomerCollectionName(branchCode);
+    const collection = db.collection(collectionName);
+    
+    await collection.deleteOne({ _id: new ObjectId(id) });
+    
+    console.log('✅ Customer deleted');
     res.json({ message: 'Customer deleted successfully' });
     
   } catch (error) {
@@ -504,237 +604,184 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/customers/:id/details - Enhanced with better order search
+// Helper function to find customer across all branches
+async function findCustomerAcrossBranches(customerId) {
+  const branchCodes = await branchManager.getAllBranchCodes();
+  
+  for (const branchCode of branchCodes) {
+    try {
+      const collectionName = await branchManager.getCustomerCollectionName(branchCode);
+      const collection = db.collection(collectionName);
+      const customer = await collection.findOne({ _id: new ObjectId(customerId) });
+      
+      if (customer) {
+        return { customer, branchCode };
+      }
+    } catch (error) {
+      console.warn(`Error searching in branch ${branchCode}:`, error.message);
+    }
+  }
+  
+  return { customer: null, branchCode: null };
+}
+
+// GET /api/customers/:id/details - Get customer with order history
 app.get('/api/customers/:id/details', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const user = req.user;
     
     console.log('📊 Fetching customer details for:', id);
     
-    // Find customer across all branch collections
-    let customer = null;
-    let customerBranchCode = null;
-    const branchCodes = await getAllBranchCodes();
-    
-    for (const branchCode of branchCodes) {
-      const collectionName = await getCustomerCollectionName(branchCode);
-      const collection = db.collection(collectionName);
-      
-      try {
-        const foundCustomer = await collection.findOne({ _id: new ObjectId(id) });
-        if (foundCustomer) {
-          customer = foundCustomer;
-          customerBranchCode = branchCode;
-          break;
-        }
-      } catch (collectionError) {
-        console.warn(`⚠️ Error checking collection ${collectionName}:`, collectionError.message);
-      }
-    }
+    // Find customer
+    const { customer, branchCode } = await findCustomerAcrossBranches(id);
     
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }
     
-    // Initialize stats with proper default values
-    let stats = {
-      totalOrders: 0,
-      distinctBoxes: 0,
-      totalBoxes: 0,
-      totalAmount: 0
-    };
+    // Find orders for this customer
+    const { orders, stats } = await findCustomerOrders(customer);
     
-    let orders = [];
-    
-    try {
-      console.log('🔍 Searching for orders...');
-      console.log('👤 Customer name:', `"${customer.name}"`);
-      console.log('📞 Customer phone:', `"${customer.phone}"`);
-      
-      // ✅ ENHANCED: Search in multiple order collections
-      const orderCollections = ['orders']; // Start with main orders collection
-      
-      // Add branch-specific order collections if they exist
-      for (const branchCode of branchCodes) {
-        orderCollections.push(`orders_${branchCode.toLowerCase()}`);
-      }
-      
-      console.log('🔍 Searching in collections:', orderCollections);
-      
-      for (const collectionName of orderCollections) {
-        try {
-          const ordersCollection = db.collection(collectionName);
-          
-          console.log(`🔍 Searching in ${collectionName}...`);
-          
-          // Search by customer name (exact match and variations)
-          const nameSearches = [
-            { customerName: customer.name },
-            { customerName: new RegExp(customer.name.replace(/\s+/g, '\\s+'), 'i') }, // Case insensitive with flexible spaces
-          ];
-          
-          for (const nameSearch of nameSearches) {
-            const ordersByName = await ordersCollection.find(nameSearch).sort({ createdAt: -1 }).toArray();
-            if (ordersByName.length > 0) {
-              console.log(`✅ Found ${ordersByName.length} orders by name in ${collectionName}:`, 
-                ordersByName.map(o => o.orderNumber));
-              orders.push(...ordersByName);
-            }
-          }
-          
-          // Search by phone number if available
-          if (customer.phone) {
-            const ordersByPhone = await ordersCollection.find({ 
-              phone: customer.phone 
-            }).sort({ createdAt: -1 }).toArray();
-            
-            if (ordersByPhone.length > 0) {
-              console.log(`✅ Found ${ordersByPhone.length} orders by phone in ${collectionName}:`, 
-                ordersByPhone.map(o => o.orderNumber));
-              orders.push(...ordersByPhone);
-            }
-          }
-          
-        } catch (collectionError) {
-          console.warn(`⚠️ Collection ${collectionName} not accessible:`, collectionError.message);
-        }
-      }
-      
-      // ✅ ENHANCED: Deduplicate orders more reliably
-      const uniqueOrders = [];
-      const seenOrderIds = new Set();
-      const seenOrderNumbers = new Set();
-      
-      orders.forEach(order => {
-        const orderId = order._id?.toString();
-        const orderNumber = order.orderNumber;
-        
-        if (orderId && !seenOrderIds.has(orderId)) {
-          seenOrderIds.add(orderId);
-          uniqueOrders.push(order);
-        } else if (orderNumber && !seenOrderNumbers.has(orderNumber) && !orderId) {
-          seenOrderNumbers.add(orderNumber);
-          uniqueOrders.push(order);
-        }
-      });
-      
-      orders = uniqueOrders.sort((a, b) => new Date(b.createdAt || b.orderDate) - new Date(a.createdAt || a.orderDate));
-      
-      console.log(`🔍 Final unique orders found: ${orders.length}`);
-      if (orders.length > 0) {
-        console.log('📋 Order numbers:', orders.map(o => o.orderNumber));
-      }
-      
-      // ✅ Calculate statistics with proper box counting
-      if (orders.length > 0) {
-        let totalBoxCount = 0;
-        let totalAmount = 0;
-        let totalDistinctBoxes = 0;
-        
-        orders.forEach((order, orderIndex) => {
-          console.log(`📦 Processing order ${orderIndex + 1}: ${order.orderNumber}`);
-          console.log(`📦 Order structure:`, {
-            hasBoxes: !!order.boxes,
-            boxesLength: order.boxes?.length,
-            totalBoxCount: order.totalBoxCount,
-            grandTotal: order.grandTotal
-          });
-          
-          // Add to total amount
-          if (order.grandTotal) {
-            totalAmount += order.grandTotal;
-            console.log(`💰 Added ₹${order.grandTotal} to total, new total: ₹${totalAmount}`);
-          }
-          
-          // Count boxes correctly
-          if (order.boxes && Array.isArray(order.boxes)) {
-            // Each element in the boxes array is ONE distinct box type
-            totalDistinctBoxes += order.boxes.length;
-            console.log(`🎁 Found ${order.boxes.length} distinct box types in this order`);
-            
-            // Sum up the boxCount from each box for total boxes
-            order.boxes.forEach((box, boxIndex) => {
-              const boxCount = box.boxCount || 1;
-              totalBoxCount += boxCount;
-              console.log(`📊 Box ${boxIndex + 1}: ${boxCount} boxes (items: ${box.items?.length || 0})`);
-            });
-          } else {
-            // Fallback: use totalBoxCount from order if boxes array not available
-            if (order.totalBoxCount) {
-              totalBoxCount += order.totalBoxCount;
-              totalDistinctBoxes += 1; // Assume 1 distinct box type
-              console.log(`📊 Using order totalBoxCount: ${order.totalBoxCount}`);
-            }
-          }
-        });
-        
-        // Update stats with calculated values
-        stats = {
-          totalOrders: orders.length,
-          distinctBoxes: totalDistinctBoxes,
-          totalBoxes: totalBoxCount,
-          totalAmount: totalAmount
-        };
-        
-        console.log('📊 Final calculated stats:', stats);
-      } else {
-        console.log('⚠️ No orders found, using fallback from customer document');
-        // Use stored customer stats as fallback
-        stats = {
-          totalOrders: customer.totalOrders || 0,
-          distinctBoxes: 0, // No orders means no boxes
-          totalBoxes: 0,    // No orders means no boxes
-          totalAmount: customer.totalSpent || 0
-        };
-      }
-      
-    } catch (ordersError) {
-      console.error('⚠️ Error fetching orders:', ordersError.message);
-      // In case of error, try to use customer document stats
-      stats = {
-        totalOrders: customer.totalOrders || 0,
-        distinctBoxes: 0,
-        totalBoxes: 0,
-        totalAmount: customer.totalSpent || 0
-      };
-    }
-    
-    console.log('✅ Returning data:', {
+    console.log('✅ Customer details fetched:', {
       customerName: customer.name,
       ordersCount: orders.length,
-      statsCalculated: stats
+      stats
     });
     
     res.json({
-      customer,
+      customer: {
+        ...customer,
+        branchCode,
+        branchName: await branchManager.getBranchNameFromCode(branchCode)
+      },
       orders,
       stats
     });
     
   } catch (error) {
-    console.error('❌ Error:', error);
+    console.error('❌ Error fetching customer details:', error);
     res.status(500).json({ message: 'Failed to fetch customer details', error: error.message });
   }
 });
 
-// POST /api/admin/refresh-branch-cache - Manually refresh branch cache (admin only)
-app.post('/api/admin/refresh-branch-cache', authenticateToken, async (req, res) => {
+// Helper function to find customer orders and calculate stats
+async function findCustomerOrders(customer) {
   try {
-    const user = req.user;
+    const orderCollections = ['orders'];
+    const branchCodes = await branchManager.getAllBranchCodes();
     
-    if (user.role !== 'admin') {
-      return res.status(403).json({ message: 'Only admins can refresh branch cache' });
+    // Add branch-specific order collections
+    branchCodes.forEach(code => {
+      orderCollections.push(`orders_${code.toLowerCase()}`);
+    });
+    
+    let allOrders = [];
+    
+    for (const collectionName of orderCollections) {
+      try {
+        const collection = db.collection(collectionName);
+        
+        // Search by exact name match and phone
+        const nameOrders = await collection.find({
+          customerName: customer.name
+        }).toArray();
+        
+        const phoneOrders = customer.phone ? await collection.find({
+          phone: customer.phone
+        }).toArray() : [];
+        
+        allOrders = allOrders.concat(nameOrders, phoneOrders);
+        
+      } catch (error) {
+        console.warn(`Collection ${collectionName} not accessible:`, error.message);
+      }
     }
     
-    await refreshBranchCache();
+    // Deduplicate orders
+    const uniqueOrders = deduplicateOrders(allOrders);
+    
+    // Sort by date (newest first)
+    uniqueOrders.sort((a, b) => 
+      new Date(b.createdAt || b.orderDate || 0) - new Date(a.createdAt || a.orderDate || 0)
+    );
+    
+    // Calculate statistics
+    const stats = calculateOrderStats(uniqueOrders);
+    
+    return { orders: uniqueOrders, stats };
+    
+  } catch (error) {
+    console.error('Error finding customer orders:', error);
+    return { 
+      orders: [], 
+      stats: { totalOrders: 0, distinctBoxes: 0, totalBoxes: 0, totalAmount: 0 }
+    };
+  }
+}
+
+// Helper function to deduplicate orders
+function deduplicateOrders(orders) {
+  const seen = new Set();
+  const unique = [];
+  
+  orders.forEach(order => {
+    const key = order._id?.toString() || order.orderNumber || `${order.customerName}-${order.createdAt}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(order);
+    }
+  });
+  
+  return unique;
+}
+
+// Helper function to calculate order statistics
+function calculateOrderStats(orders) {
+  let totalOrders = orders.length;
+  let totalBoxes = 0;
+  let distinctBoxes = 0;
+  let totalAmount = 0;
+  
+  orders.forEach(order => {
+    // Add to total amount
+    if (order.grandTotal) {
+      totalAmount += Number(order.grandTotal);
+    }
+    
+    // Count boxes
+    if (order.boxes && Array.isArray(order.boxes)) {
+      distinctBoxes += order.boxes.length;
+      
+      order.boxes.forEach(box => {
+        totalBoxes += Number(box.boxCount) || 1;
+      });
+    } else if (order.totalBoxCount) {
+      totalBoxes += Number(order.totalBoxCount);
+      distinctBoxes += 1;
+    }
+  });
+  
+  return {
+    totalOrders,
+    distinctBoxes,
+    totalBoxes,
+    totalAmount
+  };
+}
+
+// POST /api/admin/refresh-branch-cache - Manually refresh cache
+app.post('/api/admin/refresh-branch-cache', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+    
+    await branchManager.refreshCache();
     
     res.json({ 
       message: 'Branch cache refreshed successfully',
-      cache: {
-        branches: Object.keys(branchCache.nameToCode).length / 2,
-        lastUpdated: branchCache.lastUpdated
-      }
+      branches: branchManager.cache.branches.size,
+      lastUpdated: branchManager.cache.lastUpdated
     });
     
   } catch (error) {
@@ -743,139 +790,19 @@ app.post('/api/admin/refresh-branch-cache', authenticateToken, async (req, res) 
   }
 });
 
-// ===== HEALTH CHECK AND DEBUG ROUTES =====
+// ===== HEALTH CHECK AND ROUTES =====
 
-// API Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'API is healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    database: db ? 'connected' : 'disconnected'
+    database: db ? 'connected' : 'disconnected',
+    branchCache: {
+      branches: branchManager.cache.branches.size,
+      lastUpdated: branchManager.cache.lastUpdated
+    }
   });
-});
-
-// Debug test route
-app.get('/api/test/users', async (req, res) => {
-  try {
-    const User = require('./models/User');
-    const users = await User.find({}).limit(10);
-    res.json({
-      database: mongoose.connection.db.databaseName,
-      userCount: users.length,
-      users: users.map(u => ({ 
-        username: u.username, 
-        role: u.role, 
-        branchCode: u.branchCode,
-        branchName: u.branchName 
-      }))
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Debug branch cache route
-app.get('/api/debug/branch-cache', authenticateToken, async (req, res) => {
-  try {
-    const user = req.user;
-    
-    if (user.role !== 'admin') {
-      return res.status(403).json({ message: 'Only admins can view debug info' });
-    }
-    
-    res.json({
-      branchCache: {
-        nameToCode: branchCache.nameToCode,
-        codeToName: branchCache.codeToName,
-        lastUpdated: branchCache.lastUpdated,
-        cacheAge: branchCache.lastUpdated ? new Date() - branchCache.lastUpdated : null
-      },
-      availableBranchCodes: await getAllBranchCodes()
-    });
-    
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Add this to your server.js temporarily
-app.get('/api/debug/live-test', authenticateToken, async (req, res) => {
-  try {
-    console.log('🔍 Live debug test...');
-    
-    // Force refresh cache
-    await refreshBranchCache();
-    
-    // Check what we got
-    const branchCodes = await getAllBranchCodes();
-    console.log('🏢 Available branch codes:', branchCodes);
-    
-    // Test one collection
-    const testCollection = 'customers_bd';
-    const collection = db.collection(testCollection);
-    const customers = await collection.find({}).toArray();
-    
-    console.log(`📊 Found ${customers.length} customers in ${testCollection}`);
-    console.log('🔍 First customer:', customers[0]);
-    
-    res.json({
-      branchCache,
-      branchCodes,
-      testCollection,
-      customerCount: customers.length,
-      firstCustomer: customers[0]
-    });
-  } catch (error) {
-    console.error('❌ Debug error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Add this to your server.js - no authentication needed
-app.get('/api/debug/simple-test', async (req, res) => {
-  try {
-    console.log('🔍 Simple debug test...');
-    
-    // Check database connection
-    if (!db) {
-      return res.json({ error: 'Database not connected' });
-    }
-    
-    // Force refresh cache
-    await refreshBranchCache();
-    
-    // Check what we got
-    const branchCodes = await getAllBranchCodes();
-    console.log('🏢 Available branch codes:', branchCodes);
-    
-    // Check branches collection
-    const branches = await db.collection('branches').find({}).toArray();
-    console.log('🏢 Branches from DB:', branches.length);
-    
-    // Test one collection
-    const testCollection = 'customers_bd';
-    const collection = db.collection(testCollection);
-    const customers = await collection.find({}).toArray();
-    
-    console.log(`📊 Found ${customers.length} customers in ${testCollection}`);
-    
-    res.json({
-      database: 'connected',
-      branchesCount: branches.length,
-      branchCodes,
-      testCollection,
-      customerCount: customers.length,
-      branchCache: {
-        nameToCode: Object.keys(branchCache.nameToCode).length,
-        codeToName: Object.keys(branchCache.codeToName).length,
-        lastUpdated: branchCache.lastUpdated
-      }
-    });
-  } catch (error) {
-    console.error('❌ Debug error:', error);
-    res.status(500).json({ error: error.message, stack: error.stack });
-  }
 });
 
 // ===== EXISTING ROUTES =====
@@ -889,56 +816,29 @@ app.use('/api/occasions', occasionsRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/changelog', require('./routes/changelog'));
 
 // ===== DATABASE CONNECTION AND SERVER STARTUP =====
 
 async function connectToDatabase() {
   try {
-    // Connect to MongoDB using Mongoose (for existing models)
+    // Connect to MongoDB using Mongoose
     await mongoose.connect(MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
     console.log('✅ Connected to MongoDB Atlas via Mongoose');
     
-    // Also connect using native MongoDB client for customer operations
+    // Connect using native MongoDB client for direct operations
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
     db = mongoClient.db('SweetsOrder');
     console.log('✅ Connected to MongoDB Atlas via native client');
     
-    // Initialize branch cache
-    await refreshBranchCache();
+    // Initialize branch manager
+    await branchManager.initialize();
     
-    // Debug: Check current database and collections
-    console.log('📊 Current database name:', db.databaseName);
-    
-    // List all collections
-    const collections = await db.listCollections().toArray();
-    console.log('📋 Available collections:', collections.map(c => c.name));
-    
-    // Check if users collection exists and count documents
-    const User = require('./models/User');
-    const userCount = await User.countDocuments();
-    console.log('👥 Total users in database:', userCount);
-    
-    // List sample users
-    const users = await User.find({}, 'username role branchCode branchName').limit(5);
-    console.log('👤 Sample users:', users.map(u => ({
-      username: u.username,
-      role: u.role,
-      branchCode: u.branchCode,
-      branchName: u.branchName
-    })));
-    
-    // Check customer collections
-    const customerCollections = collections.filter(c => c.name.startsWith('customers_'));
-    console.log('👥 Customer collections found:', customerCollections.map(c => c.name));
-    
-    for (const collection of customerCollections) {
-      const count = await db.collection(collection.name).countDocuments();
-      console.log(`📊 ${collection.name}: ${count} customers`);
-    }
+    console.log('📊 Database setup complete');
     
   } catch (error) {
     console.error('❌ Database connection failed:', error);
@@ -946,15 +846,14 @@ async function connectToDatabase() {
   }
 }
 
-// Start the server
 async function startServer() {
   try {
     await connectToDatabase();
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌐 Health check: ${PORT === 5000 ? 'http://localhost:5000' : `https://order-management-fbre.onrender.com`}/api/health`);
-      console.log(`👥 Customers API: ${PORT === 5000 ? 'http://localhost:5000' : `https://order-management-fbre.onrender.com`}/api/customers`);
+      console.log(`🌐 Health check: /api/health`);
+      console.log(`👥 Customers API: /api/customers`);
     });
     
   } catch (error) {

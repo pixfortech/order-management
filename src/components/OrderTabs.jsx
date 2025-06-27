@@ -2,12 +2,14 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import {
   FaTrash, FaEye, FaEdit, FaPrint, FaSearch,
-  FaScroll, FaChevronDown, FaChevronRight
+  FaScroll, FaChevronDown, FaChevronRight, FaCheck
 } from 'react-icons/fa';
 import './OrderTabs.css';
+import './ChangelogModal.css'; // ✅ ADD: Import the CSS file
 import { useAuth } from '../auth/AuthContext';
 import ViewOrderModal from './ViewOrderModal';
 import PrintOrderModal from './PrintOrderModal';
+import ChangelogModal from './ChangelogModal';
 
 const displayName = localStorage.getItem('displayName') || '{displayName}';
 const stripTime = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -24,7 +26,78 @@ const getDeliveryTagWithEmoji = (dateStr) => {
   return '';
 };
 
-const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChangelog }) => {
+// ✅ FIXED: Enhanced balance calculation function
+const calculateBalance = (order) => {
+  const grandTotal = Number(order.grandTotal) || 0;
+  const advancePaid = Number(order.advancePaid) || 0;
+  const balancePaid = Number(order.balancePaid) || 0;
+  
+  // ✅ USE THE BALANCE FIELD FROM DATABASE instead of calculating
+  const remainingBalance = Number(order.balance) || 0;
+  
+  const totalPaid = advancePaid + balancePaid;
+  
+  console.log('💰 Balance info for order:', order.orderNumber, {
+    orderId: order._id,
+    grandTotal,
+    advancePaid,
+    balancePaid,
+    totalPaid,
+    remainingBalance, // This comes from database
+    isFullyPaid: remainingBalance <= 0.01,
+    orderData: {
+      rawAdvancePaid: order.advancePaid,
+      rawBalancePaid: order.balancePaid,
+      rawGrandTotal: order.grandTotal,
+      rawBalance: order.balance // This is the key field
+    }
+  });
+  
+  return {
+    grandTotal,
+    advancePaid,
+    balancePaid,
+    totalPaid,
+    balance: remainingBalance, // Use database value directly
+    isFullyPaid: remainingBalance <= 0.01,
+    hasAdvance: advancePaid > 0,
+    hasBalancePayment: balancePaid > 0,
+    hasAnyPayment: totalPaid > 0
+  };
+};
+
+// ✅ SIMPLIFIED: Balance cell with clear display logic
+const renderBalanceCell = (order) => {
+  const payment = calculateBalance(order);
+  
+  if (payment.isFullyPaid) {
+    return (
+      <div className="balance-cell fully-paid" style={{ 
+        backgroundColor: '#e8f5e9', 
+        color: '#2e7d32',
+        padding: '8px',
+        borderRadius: '4px',
+        textAlign: 'center',
+        fontWeight: 'bold'
+      }}>
+        <FaCheck style={{ marginRight: '5px' }} />
+        Fully Paid
+      </div>
+    );
+  }
+  
+  return (
+    <div className="balance-cell pending-payment" style={{ 
+      textAlign: 'center',
+      fontWeight: 'bold',
+      color: '#d32f2f'
+    }}>
+      ₹{payment.balance.toFixed(2)}
+    </div>
+  );
+};
+
+const OrderTabs = ({ setSelectedOrder, switchToFormTab, refreshTrigger }) => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   
@@ -32,6 +105,11 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   const [branches, setBranches] = useState({});
   const [occasions, setOccasions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  
+  // ✅ NEW: Changelog state
+  const [changelogData, setChangelogData] = useState({});
+  const [viewChangelog, setViewChangelog] = useState(null);
   
   const [filters, setFilters] = useState({
     name: '', 
@@ -42,13 +120,46 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
     orderDate: '', 
     deliveryDate: '', 
     status: '',
-    branch: '' // Only for admin
+    branch: ''
   });
   
   const [expandedOrders, setExpandedOrders] = useState({});
   const [printOrder, setPrintOrder] = useState(null);
   const [viewOrder, setViewOrder] = useState(null);
-  
+
+  // ✅ NEW: Fetch changelog data for admin users
+  const fetchChangelogData = useCallback(async (orderIds) => {
+    if (!isAdmin || !orderIds.length) return;
+    
+    try {
+      const token = localStorage.getItem('authToken');
+      const getApiUrl = () => {
+        if (window.location.hostname === 'localhost') {
+          return 'http://localhost:5000';
+        }
+        return 'https://order-management-fbre.onrender.com';
+      };
+      
+      console.log('📋 Fetching changelog summary for orders:', orderIds);
+      
+      const response = await fetch(`${getApiUrl()}/api/changelog/summary?orderIds=${orderIds.join(',')}`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Changelog summary received:', data);
+        setChangelogData(data);
+      } else {
+        console.error('❌ Failed to fetch changelog summary:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching changelog data:', error);
+    }
+  }, [isAdmin]);
 
   // Fetch master data (branches and occasions)
   useEffect(() => {
@@ -56,7 +167,6 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
       try {
         const token = localStorage.getItem('authToken');
         
-        // Fetch branches (only for admin)
         if (isAdmin) {
           const branchesResponse = await axios.get('/api/branches', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -71,7 +181,6 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
           setBranches(branchesObj);
         }
         
-        // Fetch occasions
         const occasionsResponse = await axios.get('/api/occasions', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -89,102 +198,171 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   }, [isAdmin]);
 
   const fetchOrders = useCallback(async () => {
-  try {
-    setIsLoading(true);
-    const token = localStorage.getItem('authToken');
-    
-    // ✅ ADD PROPER BASE URL LOGIC (same as OrdersList.jsx)
-    const getApiUrl = () => {
-      if (process.env.REACT_APP_API_URL) {
-        return process.env.REACT_APP_API_URL;
-      }
-      if (window.location.hostname === 'localhost') {
-        return 'http://localhost:5000';
-      }
-      return 'https://order-management-fbre.onrender.com';
-    };
-    
-    const baseUrl = getApiUrl();
-    
-    // Build the correct endpoint with full URL
-    let endpoint;
-    if (isAdmin) {
-      if (filters.branch) {
-        // Admin filtering by specific branch
-        endpoint = `${baseUrl}/api/orders/${filters.branch.toLowerCase()}`;
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('authToken');
+      
+      const getApiUrl = () => {
+        if (process.env.REACT_APP_API_URL) {
+          return process.env.REACT_APP_API_URL;
+        }
+        if (window.location.hostname === 'localhost') {
+          return 'http://localhost:5000';
+        }
+        return 'https://order-management-fbre.onrender.com';
+      };
+      
+      const baseUrl = getApiUrl();
+      
+      let endpoint;
+      if (isAdmin) {
+        if (filters.branch) {
+          endpoint = `${baseUrl}/api/orders/${filters.branch.toLowerCase()}`;
+        } else {
+          endpoint = `${baseUrl}/api/orders/all`;
+        }
       } else {
-        // Admin viewing all orders
-        endpoint = `${baseUrl}/api/orders/all`;
+        endpoint = `${baseUrl}/api/orders/${user?.branchCode?.toLowerCase()}`;
       }
-    } else {
-      // Staff user - only their branch
-      endpoint = `${baseUrl}/api/orders/${user?.branchCode?.toLowerCase()}`;
-    }
-    
-    // Prepare query parameters
-    const queryParams = {};
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value && value.trim() && key !== 'branch') {
-        queryParams[key] = value.trim();
+      
+      const queryParams = {};
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value.trim() && key !== 'branch') {
+          queryParams[key] = value.trim();
+        }
+      });
+      
+      console.log('🔍 OrderTabs - Fetching from endpoint:', endpoint, 'with params:', queryParams);
+      
+      const response = await fetch(endpoint + (Object.keys(queryParams).length ? '?' + new URLSearchParams(queryParams) : ''), {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('📥 OrderTabs - Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ OrderTabs - API Error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
-    });
-    
-    console.log('🔍 OrderTabs - Fetching from endpoint:', endpoint, 'with params:', queryParams);
-    console.log('👤 OrderTabs - User data:', { role: user?.role, branchCode: user?.branchCode });
-    
-    // ✅ REPLACE AXIOS WITH FETCH for consistency
-    const response = await fetch(endpoint + (Object.keys(queryParams).length ? '?' + new URLSearchParams(queryParams) : ''), {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+      
+      const ordersData = await response.json();
+      console.log('📊 OrderTabs - Raw orders data:', ordersData);
+      
+      if (Array.isArray(ordersData)) {
+        const realOrders = ordersData.filter(order => 
+          order._id && 
+          order.customerName && 
+          order.customerName.trim() !== ''
+        );
+        console.log('📋 OrderTabs - Filtered orders count:', realOrders.length);
+        setOrders(realOrders);
+        
+        // ✅ NEW: Fetch changelog data for admin users
+        if (isAdmin && realOrders.length > 0) {
+          const orderIds = realOrders.map(order => order._id);
+          await fetchChangelogData(orderIds);
+        }
+      } else if (ordersData && Array.isArray(ordersData.orders)) {
+        const realOrders = ordersData.orders.filter(order => 
+          order._id && 
+          order.customerName && 
+          order.customerName.trim() !== ''
+        );
+        console.log('📋 OrderTabs - Filtered orders count:', realOrders.length);
+        setOrders(realOrders);
+        
+        // ✅ NEW: Fetch changelog data for admin users
+        if (isAdmin && realOrders.length > 0) {
+          const orderIds = realOrders.map(order => order._id);
+          await fetchChangelogData(orderIds);
+        }
+      } else {
+        console.warn('❌ OrderTabs - API returned unexpected data format:', ordersData);
+        setOrders([]);
       }
-    });
-    
-    console.log('📥 OrderTabs - Response status:', response.status, response.statusText);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ OrderTabs - API Error:', errorText);
-      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-    }
-    
-    const ordersData = await response.json();
-    console.log('📊 OrderTabs - Raw orders data:', ordersData);
-    
-    // Ensure we get actual data from database
-    if (Array.isArray(ordersData)) {
-      // Keep all orders that have an ID and customer name
-      const realOrders = ordersData.filter(order => 
-        order._id && 
-        order.customerName && 
-        order.customerName.trim() !== ''
-      );
-      console.log('📋 OrderTabs - Filtered orders count:', realOrders.length);
-      setOrders(realOrders);
-    } else if (ordersData && Array.isArray(ordersData.orders)) {
-      const realOrders = ordersData.orders.filter(order => 
-        order._id && 
-        order.customerName && 
-        order.customerName.trim() !== ''
-      );
-      console.log('📋 OrderTabs - Filtered orders count:', realOrders.length);
-      setOrders(realOrders);
-    } else {
-      console.warn('❌ OrderTabs - API returned unexpected data format:', ordersData);
+      
+    } catch (err) {
+      console.error('❌ OrderTabs - Error fetching orders:', err);
       setOrders([]);
+    } finally {
+      setIsLoading(false);
     }
-    
-  } catch (err) {
-    console.error('❌ OrderTabs - Error fetching orders:', err);
-    setOrders([]);
-  } finally {
-    setIsLoading(false);
-  }
-}, [filters, isAdmin, user?.branchCode]);
+  }, [filters, isAdmin, user?.branchCode, fetchChangelogData]);
 
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  // ✅ FIXED: Force refresh when orders change
+  useEffect(() => {
+    console.log('📊 Orders updated, count:', orders.length);
+    setRefreshKey(prev => prev + 1);
+  }, [orders.length]);
+  
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      console.log('🔄 OrderTabs refreshing due to trigger:', refreshTrigger);
+      fetchOrders();
+    }
+  }, [refreshTrigger, fetchOrders]);
+
+  useEffect(() => {
+  const handleOrderUpdate = async (event) => {
+    console.log('🔄 Order updated event received in OrderTabs:', event.detail);
+    
+    // Force refresh of both orders and changelog data
+    try {
+      await fetchOrders(); // This should also trigger fetchChangelogData via the fetchOrders callback
+      
+      // ✅ ADDITIONAL: Force changelog refresh separately for admin users
+      if (isAdmin && orders.length > 0) {
+        console.log('📋 Forcing changelog data refresh after order update');
+        const orderIds = orders.map(order => order._id);
+        await fetchChangelogData(orderIds);
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing after order update:', error);
+    }
+  };
+
+  const handleStorageChange = async (event) => {
+    // Listen for localStorage changes that might indicate order updates
+    if (event.key === 'orderUpdated' || event.key === 'lastOrderUpdate') {
+      console.log('🔄 Storage change detected, refreshing orders and changelog');
+      try {
+        await fetchOrders();
+        
+        // ✅ ADDITIONAL: Force changelog refresh
+        if (isAdmin && orders.length > 0) {
+          const orderIds = orders.map(order => order._id);
+          await fetchChangelogData(orderIds);
+        }
+      } catch (error) {
+        console.error('❌ Error refreshing after storage change:', error);
+      }
+    }
+  };
+
+  // Listen for multiple event types to ensure we catch the update
+  const eventTypes = ['orderUpdated', 'orderSaved', 'orderChanged', 'order-update'];
+  
+  eventTypes.forEach(eventType => {
+    window.addEventListener(eventType, handleOrderUpdate);
+  });
+  
+  window.addEventListener('storage', handleStorageChange);
+  
+  return () => {
+    eventTypes.forEach(eventType => {
+      window.removeEventListener(eventType, handleOrderUpdate);
+    });
+    window.removeEventListener('storage', handleStorageChange);
+  };
+}, [fetchOrders, fetchChangelogData, isAdmin, orders.length]);
 
   const deleteOrder = async (order) => {
     if (!window.confirm(`Delete order ${order.orderNumber}?`)) return;
@@ -192,7 +370,6 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
     try {
       const token = localStorage.getItem('authToken');
       
-      // ✅ FIXED: Use proper API URL with branch code like other endpoints
       const getApiUrl = () => {
         if (process.env.REACT_APP_API_URL) {
           return process.env.REACT_APP_API_URL;
@@ -223,7 +400,7 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
       }
       
       console.log('✅ Order deleted successfully');
-      fetchOrders(); // Refresh the list
+      await fetchOrders(); // ✅ FIXED: Wait for refresh
       
     } catch (err) {
       console.error('❌ Delete failed:', err);
@@ -232,19 +409,28 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
   };
 
   const handlePrint = (order) => {
-  setPrintOrder(order);
-};
+    setPrintOrder(order);
+  };
 
   const handleEdit = (order) => {
     setSelectedOrder(order);
     switchToFormTab();
   };
 
+  // ✅ NEW: Handle changelog view - FIXED with debugging
+  const handleViewChangelog = (order) => {
+    console.log('🔍 Attempting to view changelog for order:', order._id, order.orderNumber);
+    setViewChangelog({
+      orderId: order._id,
+      orderNumber: order.orderNumber
+    });
+    console.log('✅ Changelog modal state set:', { orderId: order._id, orderNumber: order.orderNumber });
+  };
+
   const handleProgressChange = async (order, value) => {
     try {
       const token = localStorage.getItem('authToken');
       
-      // ✅ FIXED: Use proper API URL construction like other functions
       const getApiUrl = () => {
         if (process.env.REACT_APP_API_URL) {
           return process.env.REACT_APP_API_URL;
@@ -276,7 +462,14 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
       }
       
       console.log('✅ Order progress updated successfully');
-      fetchOrders(); // Refresh the orders list
+      
+      // ✅ IMPROVED: Force immediate refresh without delay
+      await fetchOrders();
+      
+      // Also dispatch the orderUpdated event for other components
+      window.dispatchEvent(new CustomEvent('orderUpdated', { 
+        detail: { orderId: order._id, action: 'progress_update' } 
+      }));
       
     } catch (err) {
       console.error('❌ Progress update failed:', err);
@@ -284,17 +477,17 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
     }
   };
 
-  const hasChangelog = (orderId) => changelogData?.[orderId]?.length >= 1;
+  // ✅ NEW: Check if order has changelog entries
+  const hasChangelog = (orderId) => {
+    return changelogData && changelogData[orderId] && changelogData[orderId] > 0;
+  };
 
-  // ✅ FIXED: Completely rewritten grouping logic
   const processOrders = () => {
-    // Safety check: ensure orders is an array
     if (!Array.isArray(orders)) {
       console.warn('Orders is not an array:', orders);
       return [];
     }
     
-    // Group orders by full order number to handle duplicates
     const orderMap = {};
     
     orders.forEach(order => {
@@ -303,16 +496,13 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
       if (!orderMap[orderNumber]) {
         orderMap[orderNumber] = order;
       } else {
-        // If duplicate order number, keep the most recent one
         if (new Date(order.createdAt) > new Date(orderMap[orderNumber].createdAt)) {
           orderMap[orderNumber] = order;
         }
       }
     });
     
-    // Convert back to array and sort by order number (newest first)
     const uniqueOrders = Object.values(orderMap).sort((a, b) => {
-      // Sort by creation date, newest first
       return new Date(b.createdAt || b.orderDate) - new Date(a.createdAt || a.orderDate);
     });
     
@@ -320,20 +510,23 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
     return uniqueOrders;
   };
 
-  // ✅ FIXED: New function to create box breakdown for multi-box orders
   const createBoxBreakdown = (order) => {
     if (!order.boxes || order.boxes.length <= 1) {
-      return null; // Single box order, no breakdown needed
+      return null;
     }
     
     const breakdown = [];
     const totalBoxCount = order.boxes.reduce((sum, box) => sum + (box.boxCount || 1), 0);
-    const advancePerBox = (order.advancePaid || 0) / totalBoxCount;
+    const orderPayment = calculateBalance(order);
+    
+    const advancePerBox = orderPayment.advancePaid / totalBoxCount;
+    const balancePerBox = orderPayment.balancePaid / totalBoxCount;
     
     order.boxes.forEach((box, index) => {
       const boxSubtotal = box.items.reduce((sum, item) => sum + (item.qty * item.price), 0);
       const boxTotal = (boxSubtotal * (box.boxCount || 1)) - ((box.discount || 0) * (box.boxCount || 1));
       const boxAdvance = advancePerBox * (box.boxCount || 1);
+      const boxBalancePaid = balancePerBox * (box.boxCount || 1);
       
       breakdown.push({
         ...order,
@@ -341,7 +534,8 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
         subLabel: `-${chars[index] || index}`,
         grandTotal: boxTotal,
         advancePaid: boxAdvance,
-        balance: boxTotal - boxAdvance,
+        balancePaid: boxBalancePaid,
+        balance: boxTotal - boxAdvance - boxBalancePaid,
         box: box,
         isSubOrder: true
       });
@@ -368,8 +562,15 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
     });
   };
 
-  // ✅ FIXED: Process orders for rendering
   const processedOrders = processOrders();
+
+  // ✅ DEBUG: Log modal state
+  console.log('🔍 Current modal states:', {
+    viewOrder: !!viewOrder,
+    printOrder: !!printOrder,
+    viewChangelog: !!viewChangelog,
+    changelogData: Object.keys(changelogData).length
+  });
 
   return (
     <div className="order-tabs">
@@ -493,8 +694,19 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
 
         {/* Action Buttons */}
         <div className="filter-group">
-          <label>&nbsp;</label> {/* Empty label for alignment */}
+          <label>&nbsp;</label>
           <div className="filter-actions">
+            <button 
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered');
+                fetchOrders();
+              }} 
+              title="Refresh Orders" 
+              className="search-btn"
+              disabled={isLoading}
+            >
+              {isLoading ? '...' : '🔄'} Refresh
+            </button>
             <button 
               onClick={fetchOrders} 
               title="Search" 
@@ -523,7 +735,7 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
           No orders found
         </div>
       ) : (
-        <div className="table-container">
+        <div className="table-container" key={refreshKey}>
           <table>
             <thead>
               <tr>
@@ -534,7 +746,6 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
                 <th>Delivery</th>
                 <th>Time</th>
                 <th>Occasion</th>
-                {/* Branch Column - Only for Admin */}
                 {isAdmin && <th>Branch</th>}
                 <th>Total</th>
                 <th>Status</th>
@@ -551,9 +762,11 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
                 const expanded = expandedOrders[orderNumber];
                 const totalBoxCount = order.boxes ? order.boxes.reduce((sum, box) => sum + (box.boxCount || 1), 0) : 1;
                 
-                // Main order row
+                const orderPayment = calculateBalance(order);
+                const rowClassName = `main-order ${orderPayment.isFullyPaid ? 'fully-paid-row' : ''}`;
+                
                 const mainRow = (
-                  <tr key={orderNumber} className="main-order">
+                  <tr key={orderNumber} className={rowClassName}>
                     <td 
                       onClick={() => hasMultipleBoxes && setExpandedOrders(prev => ({ ...prev, [orderNumber]: !prev[orderNumber] }))}
                       style={{ cursor: hasMultipleBoxes ? 'pointer' : 'default' }}
@@ -576,14 +789,16 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
                     <td>{order.deliveryTime}</td>
                     <td>{order.occasion}</td>
                     
-                    {/* Branch Column - Only for Admin */}
                     {isAdmin && (
                       <td>{branches[order.branchCode] || order.branch || 'Unknown'}</td>
                     )}
                     
                     <td>₹{(order.grandTotal || 0).toFixed(2)}</td>
                     <td><span className={`badge ${order.status}`}>{order.status}</span></td>
-                    <td>₹{((order.grandTotal || 0) - (order.advancePaid || 0)).toFixed(2)}</td>
+                    
+                    {/* ✅ SIMPLIFIED: Clean balance display */}
+                    <td>{renderBalanceCell(order)}</td>
+                    
                     <td>
                       <select
                         value={order.orderProgress || ''}
@@ -602,9 +817,51 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
                         <button onClick={() => handleEdit(order)} title="Edit"><FaEdit /></button>
                         <button onClick={() => setViewOrder({ ...order, boxViewMode: 'all' })} title="View"><FaEye /></button>
                         <button onClick={() => handlePrint({ ...order, boxViewMode: 'all' })} title="Print All"><FaPrint /></button>
-                        {isAdmin && hasChangelog(order._id) && (
-                          <button onClick={() => viewChangelog(order._id)} title="Changelog"><FaScroll /></button>
+                        
+                        {/* ✅ NEW: Changelog button for admin with indicator - FIXED */}
+                        {isAdmin && (
+                          <button 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('📋 Changelog button clicked for order:', order._id, order.orderNumber);
+                              handleViewChangelog(order);
+                            }} 
+                            title="View Order History"
+                            className={hasChangelog(order._id) ? 'changelog-active' : 'changelog-inactive'}
+                            style={{
+                              position: 'relative',
+                              background: hasChangelog(order._id) ? '#667eea' : '#f0f0f0',
+                              color: hasChangelog(order._id) ? 'white' : '#666',
+                              border: 'none',
+                              padding: '6px 8px',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <FaScroll />
+                            {hasChangelog(order._id) && (
+                              <span className="changelog-badge" style={{
+                                position: 'absolute',
+                                top: '-8px',
+                                right: '-8px',
+                                background: '#ff4444',
+                                color: 'white',
+                                borderRadius: '50%',
+                                width: '18px',
+                                height: '18px',
+                                fontSize: '0.7rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 'bold'
+                              }}>
+                                {changelogData[order._id]}
+                              </span>
+                            )}
+                          </button>
                         )}
+                        
                         {isAdmin && (
                           <button onClick={() => deleteOrder(order)} title="Delete"><FaTrash /></button>
                         )}
@@ -613,57 +870,63 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
                   </tr>
                 );
                 
-                // Sub-order rows (only if expanded and has multiple boxes)
                 const subRows = (hasMultipleBoxes && expanded && boxBreakdown) ? 
-                  boxBreakdown.map((subOrder, index) => (
-                    <tr key={`${orderNumber}-${subOrder.subLabel}`} className="sub-order">
-                      <td title={`Box ${index + 1}: ${subOrder.box.items.map(it => `${it.name} x${it.qty}`).join(', ')}`}>
-                        &nbsp;&nbsp;&nbsp;&nbsp;↳ {orderNumber}{subOrder.subLabel}
-                      </td>
-                      <td>
-                        <strong>{subOrder.box.boxCount || 1}</strong>
-                        <small> (Box {index + 1})</small>
-                      </td>
-                      <td className="customer-cell">{subOrder.customerName}</td>
-                      <td className="phone-cell">{subOrder.phone}</td>
-                      <td>
-                        <div className="delivery-cell">
-                          <span className="delivery-date">{subOrder.deliveryDate}</span>
-                          <span className="badge tag">{getDeliveryTagWithEmoji(subOrder.deliveryDate)}</span>
-                        </div>
-                      </td>
-                      <td>{subOrder.deliveryTime}</td>
-                      <td>{subOrder.occasion}</td>
-                      
-                      {/* Branch Column for sub-orders - Only for Admin */}
-                      {isAdmin && (
-                        <td>{branches[subOrder.branchCode] || subOrder.branch || 'Unknown'}</td>
-                      )}
-                      
-                      <td>₹{subOrder.grandTotal.toFixed(2)}</td>
-                      <td><span className={`badge ${subOrder.status}`}>{subOrder.status}</span></td>
-                      <td>₹{subOrder.balance.toFixed(2)}</td>
-                      <td>
-                        <select
-                          value={subOrder.orderProgress || ''}
-                          className="progress-select"
-                          onChange={(e) => handleProgressChange(subOrder, e.target.value)}
-                        >
-                          <option value="">⏳ Pending</option>
-                          <option value="Packed">📦 Packed</option>
-                          <option value="Delivered">🚚 Delivered</option>
-                          <option value="Completed">✅ Completed</option>
-                          <option value="Cancelled">❌ Cancelled</option>
-                        </select>
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button onClick={() => handlePrint({ ...subOrder, boxViewMode: index })} title="Print Box"><FaPrint /></button>
-                          <button onClick={() => setViewOrder({ ...subOrder, boxViewMode: index })} title="View"><FaEye /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  )) : [];
+                  boxBreakdown.map((subOrder, index) => {
+                    const subOrderPayment = calculateBalance(subOrder);
+                    const subRowClassName = `sub-order ${subOrderPayment.isFullyPaid ? 'fully-paid-row' : ''}`;
+                    
+                    return (
+                      <tr key={`${orderNumber}-${subOrder.subLabel}`} className={subRowClassName}>
+                        <td title={`Box ${index + 1}: ${subOrder.box.items.map(it => `${it.name} x${it.qty}`).join(', ')}`}>
+                          &nbsp;&nbsp;&nbsp;&nbsp;↳ {orderNumber}{subOrder.subLabel}
+                        </td>
+                        <td>
+                          <strong>{subOrder.box.boxCount || 1}</strong>
+                          <small> (Box {index + 1})</small>
+                        </td>
+                        <td className="customer-cell">{subOrder.customerName}</td>
+                        <td className="phone-cell">{subOrder.phone}</td>
+                        <td>
+                          <div className="delivery-cell">
+                            <span className="delivery-date">{subOrder.deliveryDate}</span>
+                            <span className="badge tag">{getDeliveryTagWithEmoji(subOrder.deliveryDate)}</span>
+                          </div>
+                        </td>
+                        <td>{subOrder.deliveryTime}</td>
+                        <td>{subOrder.occasion}</td>
+                        
+                        {isAdmin && (
+                          <td>{branches[subOrder.branchCode] || subOrder.branch || 'Unknown'}</td>
+                        )}
+                        
+                        <td>₹{subOrder.grandTotal.toFixed(2)}</td>
+                        <td><span className={`badge ${subOrder.status}`}>{subOrder.status}</span></td>
+                        
+                        {/* ✅ SIMPLIFIED: Sub-order balance display */}
+                        <td>{renderBalanceCell(subOrder)}</td>
+                        
+                        <td>
+                          <select
+                            value={subOrder.orderProgress || ''}
+                            className="progress-select"
+                            onChange={(e) => handleProgressChange(subOrder, e.target.value)}
+                          >
+                            <option value="">⏳ Pending</option>
+                            <option value="Packed">📦 Packed</option>
+                            <option value="Delivered">🚚 Delivered</option>
+                            <option value="Completed">✅ Completed</option>
+                            <option value="Cancelled">❌ Cancelled</option>
+                          </select>
+                        </td>
+                        <td>
+                          <div className="action-buttons">
+                            <button onClick={() => handlePrint({ ...subOrder, boxViewMode: index })} title="Print Box"><FaPrint /></button>
+                            <button onClick={() => setViewOrder({ ...subOrder, boxViewMode: index })} title="View"><FaEye /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }) : [];
                 
                 return [mainRow, ...subRows];
               })}
@@ -672,6 +935,14 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
         </div>
       )}
 
+      {/* ✅ FIXED: Debug the modal rendering */}
+      {console.log('🔍 About to render modals:', {
+        viewOrder: !!viewOrder,
+        printOrder: !!printOrder,
+        viewChangelog: !!viewChangelog
+      })}
+
+      {/* Modals */}
       {viewOrder && (
         <ViewOrderModal
           order={viewOrder}
@@ -679,10 +950,23 @@ const OrderTabs = ({ setSelectedOrder, switchToFormTab, changelogData, viewChang
           onPrint={handlePrint}
         />
       )}
+      
       {printOrder && (
         <PrintOrderModal
           order={printOrder}
           onClose={() => setPrintOrder(null)}
+        />
+      )}
+      
+      {/* ✅ NEW: Changelog Modal - FIXED with explicit check */}
+      {viewChangelog && viewChangelog.orderId && (
+        <ChangelogModal
+          orderId={viewChangelog.orderId}
+          orderNumber={viewChangelog.orderNumber}
+          onClose={() => {
+            console.log('📋 Closing changelog modal');
+            setViewChangelog(null);
+          }}
         />
       )}
     </div>
