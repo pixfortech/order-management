@@ -1,629 +1,238 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './auth/AuthContext';
+// App.jsx - Enhanced with connection debugging
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './components/LoginPage';
-import OrderForm from './components/OrderForm';
-import OrderTabs from './components/OrderTabs';
-import OrderSummary from './components/OrderSummary';
-import SettingsPanel from './components/SettingsPanel';
-import { getApiUrl } from './auth/apiConfig';
+import Dashboard from './components/Dashboard';
+import './App.css';
 
-// Main Layout Component with Navigation
-const MainLayout = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  // ✅ ADD THESE NEW LINES FOR ORDER MANAGEMENT
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [orderRefreshTrigger, setOrderRefreshTrigger] = useState(0);
-  const [changelogData, setChangelogData] = useState({});
-  const viewChangelog = (orderId) => {
-    console.log('📜 Viewing changelog for order:', orderId);
-    // Add your changelog viewing logic here
+// Debug component to show connection status
+const ConnectionDebug = () => {
+  const { API_URL, testConnection, error } = useAuth();
+  const [connectionStatus, setConnectionStatus] = useState('checking');
+  const [lastChecked, setLastChecked] = useState(null);
+
+  const checkConnection = async () => {
+    setConnectionStatus('checking');
+    const isConnected = await testConnection();
+    setConnectionStatus(isConnected ? 'connected' : 'disconnected');
+    setLastChecked(new Date().toLocaleTimeString());
   };
-  const orderFormRef = useRef();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const auth = useAuth();
 
-  // Handle responsive design
   useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth <= 768;
-      setIsMobile(mobile);
-      if (!mobile) {
-        setIsMobileMenuOpen(false);
-        document.body.style.overflow = '';
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    checkConnection();
+    // Check connection every 30 seconds
+    const interval = setInterval(checkConnection, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Toggle mobile menu
-  const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
-    document.body.style.overflow = !isMobileMenuOpen ? 'hidden' : '';
-  };
-
-  // Handle navigation
-  const handleNavigation = (path) => {
-    navigate(path);
-    if (isMobile) {
-      setIsMobileMenuOpen(false);
-      document.body.style.overflow = '';
+  const getStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected': return '#4caf50';
+      case 'disconnected': return '#f44336';
+      case 'checking': return '#ff9800';
+      default: return '#9e9e9e';
     }
   };
-  
-  // ✅ ADD THESE NEW FUNCTIONS
-  const switchToFormTab = () => {
-    console.log('🔄 Switching to form tab...');
-    navigate('/current-order');
-  };
 
-  const handleEditOrder = (order) => {
-    console.log('📝 App - Setting selected order for editing:', order);
-    setSelectedOrder(order);
-    switchToFormTab();
-  };
-
-  const clearSelectedOrder = () => {
-    console.log('🗑️ App - Clearing selected order');
-    setSelectedOrder(null);
+  const getStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'Connected';
+      case 'disconnected': return 'Disconnected';
+      case 'checking': return 'Checking...';
+      default: return 'Unknown';
+    }
   };
 
   return (
-  <>
-    {/* Header */}
-    <Header 
-      isMobile={isMobile}
-      isMobileMenuOpen={isMobileMenuOpen}
-      onToggleMobileMenu={toggleMobileMenu}
-      user={auth.user}
-      onLogout={auth.logout}
-      location={location}
-      navigate={navigate}
-    />
-
-    {/* Mobile Navigation */}
-    <MobileNavigation 
-      isOpen={isMobileMenuOpen}
-      currentPath={location.pathname}
-      onNavigate={handleNavigation}
-      user={auth.user}
-      onLogout={auth.logout}
-    />
-
-    {/* Main Content */}
-    <main className={`app-main ${isMobile ? 'mobile' : ''}`}>
-      {renderCurrentPage(
-        location.pathname, 
-        selectedOrder, 
-        setSelectedOrder, 
-        orderFormRef, 
-        handleEditOrder, 
-        switchToFormTab,
-        orderRefreshTrigger,
-        setOrderRefreshTrigger,
-        changelogData,
-        viewChangelog
-      )}
-    </main>
-  </>
-);
-};
-
-// Header Component
-const Header = ({ isMobile, isMobileMenuOpen, onToggleMobileMenu, user, onLogout, location, navigate }) => {
-  return (
-    <header className={`app-header ${isMobile ? 'mobile' : ''}`}>
-      <div className="header-content">
-        <div className="header-left">
-          {/* Hamburger Menu (mobile only) */}
-          {isMobile && (
-            <button 
-              className={`hamburger-menu ${isMobileMenuOpen ? 'active' : ''}`}
-              onClick={onToggleMobileMenu}
-              aria-label="Toggle menu"
-            >
-              <span className="hamburger-line"></span>
-              <span className="hamburger-line"></span>
-              <span className="hamburger-line"></span>
-            </button>
-          )}
-          
-          {/* Logo/Brand */}
-          <div className="brand-info">
-            <h3 style={{ margin: 0, color: 'var(--theme-color)' }}>OrderApp</h3>
-          </div>
-        </div>
-        
-        {/* Desktop Navigation */}
-        {!isMobile && (
-          <div className="header-center">
-            <DesktopNavigation currentPath={location.pathname} onNavigate={navigate} user={user} />
-          </div>
+    <div style={{
+      position: 'fixed',
+      top: '10px',
+      right: '10px',
+      background: 'rgba(0, 0, 0, 0.8)',
+      color: 'white',
+      padding: '10px',
+      borderRadius: '8px',
+      fontSize: '12px',
+      zIndex: 9999,
+      maxWidth: '300px'
+    }}>
+      <div style={{ marginBottom: '5px' }}>
+        <span style={{ color: getStatusColor(), fontWeight: 'bold' }}>
+          ● {getStatusText()}
+        </span>
+        {lastChecked && (
+          <span style={{ marginLeft: '10px', color: '#ccc' }}>
+            Last: {lastChecked}
+          </span>
         )}
-        
-        <div className="header-right">
-          <UserActions user={user} onLogout={onLogout} isMobile={isMobile} />
-        </div>
       </div>
-    </header>
-  );
-};
-
-// Desktop Navigation Component
-const DesktopNavigation = ({ currentPath, onNavigate, user }) => {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', path: '/' },
-    { id: 'current-order', label: 'New Order', path: '/current-order' },
-    { id: 'orders', label: 'Orders', path: '/orders' },
-    { id: 'summary', label: 'Summary', path: '/summary' },
-  ];
-
-  // Add settings if user is admin
-  if (user?.role === 'admin') {
-    navItems.push({ id: 'settings', label: 'Settings', path: '/settings' });
-  }
-
-  return (
-    <nav className="app-nav">
-      {navItems.map(item => (
-        <button
-          key={item.id}
-          className={`nav-item ${currentPath === item.path ? 'active' : ''}`}
-          onClick={() => onNavigate(item.path)}
-        >
-          {item.label}
-        </button>
-      ))}
-    </nav>
-  );
-};
-
-// Mobile Navigation Component
-const MobileNavigation = ({ isOpen, currentPath, onNavigate, user, onLogout }) => {
-  const navItems = [
-    { id: 'dashboard', label: '🏠 Dashboard', path: '/' },
-    { id: 'current-order', label: '📝 New Order', path: '/current-order' },
-    { id: 'orders', label: '📋 Orders', path: '/orders' },
-    { id: 'summary', label: '📊 Summary', path: '/summary' },
-  ];
-
-  // Add settings if user is admin
-  if (user?.role === 'admin') {
-    navItems.push({ id: 'settings', label: '⚙️ Settings', path: '/settings' });
-  }
-
-  return (
-    <nav className={`mobile-nav ${isOpen ? 'active' : ''}`}>
-      {/* User Info */}
-      <div className="mobile-user-info" style={{ 
-        padding: 'var(--spacing-md)', 
-        borderBottom: '1px solid var(--border-color)',
-        marginBottom: 'var(--spacing-md)'
-      }}>
-        <div className="user-info-badge">
-          👤 {user?.displayName || user?.username || 'User'}
-          {user?.role === 'admin' && <span className="badge badge-primary ml-2">Admin</span>}
-        </div>
-        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-color-muted)' }}>
-          Branch: {user?.branchName || user?.branch || 'Main'}
-        </div>
+      <div style={{ fontSize: '10px', color: '#ccc' }}>
+        API: {API_URL}
       </div>
-
-      {/* Navigation Items */}
-      {navItems.map(item => (
-        <button
-          key={item.id}
-          className={`mobile-nav-item ${currentPath === item.path ? 'active' : ''}`}
-          onClick={() => onNavigate(item.path)}
-        >
-          {item.label}
-        </button>
-      ))}
-      
-      {/* Logout */}
-      <button
-        className="mobile-nav-item"
-        onClick={onLogout}
-        style={{ 
-          marginTop: 'var(--spacing-lg)',
-          borderTop: '1px solid var(--border-color)',
-          paddingTop: 'var(--spacing-md)',
-          color: 'var(--error-color)'
+      {error && (
+        <div style={{ 
+          marginTop: '5px', 
+          padding: '5px', 
+          background: 'rgba(244, 67, 54, 0.2)', 
+          borderRadius: '4px',
+          fontSize: '10px'
+        }}>
+          Error: {error}
+        </div>
+      )}
+      <button 
+        onClick={checkConnection}
+        style={{
+          marginTop: '5px',
+          padding: '2px 6px',
+          fontSize: '10px',
+          background: '#666',
+          color: 'white',
+          border: 'none',
+          borderRadius: '3px',
+          cursor: 'pointer'
         }}
       >
-        🚪 Logout
-      </button>
-    </nav>
-  );
-};
-
-// User Actions Component
-const UserActions = ({ user, onLogout, isMobile }) => {
-  if (isMobile) {
-    return (
-      <div className="user-info-badge">
-        {user?.displayName?.charAt(0) || user?.username?.charAt(0) || 'U'}
-      </div>
-    );
-  }
-
-  return (
-    <div className="button-group">
-      <div className="user-info-badge">
-        👤 {user?.displayName || user?.username || 'User'}
-        {user?.role === 'admin' && <span className="badge badge-primary">Admin</span>}
-      </div>
-      <button className="btn btn-secondary btn-sm" onClick={onLogout}>
-        Logout
+        Recheck
       </button>
     </div>
   );
 };
 
-// Render current page content
-const renderCurrentPage = (pathname, selectedOrder, setSelectedOrder, orderFormRef, handleEditOrder, switchToFormTab, orderRefreshTrigger, setOrderRefreshTrigger, changelogData, viewChangelog) => {
-  switch (pathname) {
-    case '/':
-      return <Dashboard />;
-    case '/current-order':
-      return (
-        <OrderForm 
-          ref={orderFormRef}
-          selectedOrder={selectedOrder}
-          setSelectedOrder={setSelectedOrder}
-          onOrderUpdate={() => setOrderRefreshTrigger(prev => prev + 1)}
-        />
-      );
-    case '/orders':
-      return (
-        <OrderTabs 
-          setSelectedOrder={setSelectedOrder}
-          switchToFormTab={switchToFormTab}
-          changelogData={changelogData}
-          viewChangelog={viewChangelog}
-          refreshTrigger={orderRefreshTrigger}
-        />
-      );
-    case '/summary':
-      return <OrderSummary />;
-    case '/settings':
-      return <SettingsPanel />;
-    default:
-      return <Dashboard />;
-  }
-};
+// Loading component with better UX
+const LoadingScreen = () => {
+  const [dots, setDots] = useState('');
 
-// Dashboard Component with Database Integration
-const Dashboard = () => {
-  const [dateFilter, setDateFilter] = useState('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [dashboardData, setDashboardData] = useState({
-    totalOrders: 0,
-    totalBoxes: 0,
-    totalCustomers: 0,
-    totalRevenue: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Fetch dashboard data from database
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Build query parameters based on date filter
-      const params = new URLSearchParams();
-      params.append('filter', dateFilter);
-      
-      if (dateFilter === 'custom' && startDate && endDate) {
-        params.append('startDate', startDate);
-        params.append('endDate', endDate);
-      }
-
-      // Get API base URL using our local function
-      const apiBaseUrl = getApiUrl();
-      const token = localStorage.getItem('authToken');
-      
-      // API call to fetch dashboard metrics
-      const response = await fetch(`${apiBaseUrl}/api/dashboard/metrics?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch dashboard data: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      setDashboardData({
-        totalOrders: data.totalOrders || 0,
-        totalBoxes: data.totalBoxes || 0,
-        totalCustomers: data.totalCustomers || 0,
-        totalRevenue: data.totalRevenue || 0
-      });
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError(err.message);
-      // Fallback to demo data on error
-      setDashboardData({
-        totalOrders: 247,
-        totalBoxes: 1856,
-        totalCustomers: 89,
-        totalRevenue: 15420
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch data on component mount and when filters change
   useEffect(() => {
-    fetchDashboardData();
-  }, [dateFilter, startDate, endDate]);
-
-  // Handle date filter change
-  const handleDateFilterChange = (newFilter) => {
-    setDateFilter(newFilter);
-    if (newFilter !== 'custom') {
-      setStartDate('');
-      setEndDate('');
-    }
-  };
+    const interval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 className="card-title">Dashboard</h2>
-        <div className="button-group">
-          <select 
-            value={dateFilter} 
-            onChange={(e) => handleDateFilterChange(e.target.value)}
-            className="form-select"
-            style={{ marginRight: '10px' }}
-          >
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="custom">Custom Range</option>
-          </select>
-          {dateFilter === 'custom' && (
-            <>
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="form-input"
-                style={{ marginRight: '10px', width: '150px' }}
-                placeholder="Start Date"
-              />
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="form-input"
-                style={{ width: '150px' }}
-                placeholder="End Date"
-              />
-            </>
-          )}
-          <button 
-            onClick={fetchDashboardData}
-            className="btn btn-sm"
-            style={{ marginLeft: '10px' }}
-            disabled={loading}
-          >
-            {loading ? 'Refreshing...' : '🔄 Refresh'}
-          </button>
-        </div>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100vh',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      color: 'white'
+    }}>
+      <div style={{
+        fontSize: '24px',
+        marginBottom: '20px'
+      }}>
+        🔄 Loading{dots}
       </div>
-      <div className="card-body">
-        {error && (
-          <div className="alert alert-warning" style={{ 
-            marginBottom: '20px',
-            padding: '15px',
-            backgroundColor: '#fff3cd',
-            border: '1px solid #ffeaa7',
-            borderRadius: '4px',
-            color: '#856404'
-          }}>
-            <strong>⚠️ Backend API Issue:</strong> The dashboard metrics endpoint (/api/dashboard/metrics) is not implemented yet. Showing demo data below. 
-            <br />
-            <small>Error: {error}</small>
-          </div>
-        )}
-        
-        {loading ? (
-          <div className="text-center" style={{ padding: '40px' }}>
-            <p>Loading dashboard data...</p>
-          </div>
-        ) : (
-          <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-            <div className="card" style={{ border: '2px solid #49488D' }}>
-              <div className="card-body text-center" style={{ 
-                backgroundColor: '#49488D', 
-                color: 'white',
-                padding: '30px 20px'
-              }}>
-                <h3 style={{ 
-                  color: 'white', 
-                  marginBottom: '15px',
-                  fontSize: '1.1rem',
-                  fontWeight: '600'
-                }}>Total Orders</h3>
-                <p style={{ 
-                  fontSize: '2.5rem', 
-                  fontWeight: 'bold',
-                  color: 'white',
-                  margin: 0,
-                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
-                }}>
-                  {dashboardData.totalOrders.toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="card" style={{ border: '2px solid #49488D' }}>
-              <div className="card-body text-center" style={{ 
-                backgroundColor: '#49488D', 
-                color: 'white',
-                padding: '30px 20px'
-              }}>
-                <h3 style={{ 
-                  color: 'white', 
-                  marginBottom: '15px',
-                  fontSize: '1.1rem',
-                  fontWeight: '600'
-                }}>Total Boxes</h3>
-                <p style={{ 
-                  fontSize: '2.5rem', 
-                  fontWeight: 'bold',
-                  color: 'white',
-                  margin: 0,
-                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
-                }}>
-                  {dashboardData.totalBoxes.toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="card" style={{ border: '2px solid #49488D' }}>
-              <div className="card-body text-center" style={{ 
-                backgroundColor: '#49488D', 
-                color: 'white',
-                padding: '30px 20px'
-              }}>
-                <h3 style={{ 
-                  color: 'white', 
-                  marginBottom: '15px',
-                  fontSize: '1.1rem',
-                  fontWeight: '600'
-                }}>Total Customers</h3>
-                <p style={{ 
-                  fontSize: '2.5rem', 
-                  fontWeight: 'bold',
-                  color: 'white',
-                  margin: 0,
-                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
-                }}>
-                  {dashboardData.totalCustomers.toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="card" style={{ border: '2px solid #49488D' }}>
-              <div className="card-body text-center" style={{ 
-                backgroundColor: '#49488D', 
-                color: 'white',
-                padding: '30px 20px'
-              }}>
-                <h3 style={{ 
-                  color: 'white', 
-                  marginBottom: '15px',
-                  fontSize: '1.1rem',
-                  fontWeight: '600'
-                }}>Total Revenue</h3>
-                <p style={{ 
-                  fontSize: '2.5rem', 
-                  fontWeight: 'bold',
-                  color: 'white',
-                  margin: 0,
-                  textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
-                }}>
-                  ₹{dashboardData.totalRevenue.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div className="card" style={{ marginTop: '20px' }}>
-          <div className="card-header">
-            <h3>Quick Actions</h3>
-          </div>
-          <div className="card-body">
-            <div className="button-group">
-              <button className="btn">Create New Order</button>
-              <button className="btn btn-secondary">View Reports</button>
-              <button className="btn btn-secondary">Manage Inventory</button>
-            </div>
-          </div>
-        </div>
+      <div style={{
+        fontSize: '14px',
+        opacity: 0.8
+      }}>
+        Connecting to server...
       </div>
     </div>
   );
 };
 
-// App Content Component with Routing
-const AppContent = () => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+// Error component
+const ErrorScreen = ({ error, onRetry }) => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    padding: '20px',
+    textAlign: 'center'
+  }}>
+    <div style={{ fontSize: '48px', marginBottom: '20px' }}>
+      ⚠️
+    </div>
+    <div style={{ fontSize: '24px', marginBottom: '15px' }}>
+      Connection Error
+    </div>
+    <div style={{ 
+      fontSize: '14px', 
+      marginBottom: '20px', 
+      maxWidth: '500px',
+      background: 'rgba(0, 0, 0, 0.3)',
+      padding: '15px',
+      borderRadius: '8px'
+    }}>
+      {error}
+    </div>
+    <button 
+      onClick={onRetry}
+      style={{
+        padding: '12px 24px',
+        fontSize: '16px',
+        background: 'rgba(255, 255, 255, 0.2)',
+        color: 'white',
+        border: '2px solid rgba(255, 255, 255, 0.3)',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        transition: 'all 0.3s ease'
+      }}
+      onMouseOver={(e) => {
+        e.target.style.background = 'rgba(255, 255, 255, 0.3)';
+      }}
+      onMouseOut={(e) => {
+        e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+      }}
+    >
+      🔄 Retry Connection
+    </button>
+  </div>
+);
 
-  // Show loading spinner while checking authentication
-  if (isLoading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        fontFamily: 'Poppins, sans-serif'
-      }}>
-        <div>
-          <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🔄</div>
-          <div>Loading...</div>
-        </div>
-      </div>
-    );
+// Main App content
+const AppContent = () => {
+  const { user, loading, error } = useAuth();
+
+  console.log('🎯 App render state:', { user: !!user, loading, error });
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  if (error && !user) {
+    return <ErrorScreen error={error} onRetry={() => window.location.reload()} />;
   }
 
   return (
-    <Routes>
-      <Route 
-        path="/login" 
-        element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />} 
-      />
-      <Route 
-        path="/" 
-        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
-      />
-      <Route 
-        path="/current-order" 
-        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
-      />
-      <Route 
-        path="/orders" 
-        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
-      />
-      <Route 
-        path="/summary" 
-        element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />} 
-      />
-      
-      {/* Protected Settings route - only accessible by admin */}
-      <Route 
-        path="/settings" 
-        element={
-          !isAuthenticated ? <Navigate to="/login" /> :
-          (user?.role === 'admin' ? <MainLayout /> : <Navigate to="/" replace />)
-        } 
-      />
-    </Routes>
+    <>
+      <ConnectionDebug />
+      <Routes>
+        <Route 
+          path="/login" 
+          element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} 
+        />
+        <Route 
+          path="/dashboard" 
+          element={user ? <Dashboard /> : <Navigate to="/login" replace />} 
+        />
+        <Route 
+          path="/" 
+          element={<Navigate to={user ? "/dashboard" : "/login"} replace />} 
+        />
+      </Routes>
+    </>
   );
 };
 
-// Main App Component
+// Main App component
 function App() {
   return (
     <AuthProvider>
       <Router>
-        <AppContent />
+        <div className="App">
+          <AppContent />
+        </div>
       </Router>
     </AuthProvider>
   );

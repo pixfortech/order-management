@@ -1,214 +1,203 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+// AuthContext.jsx - Enhanced with better error handling and debugging
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export const AuthContext = createContext();
+const AuthContext = createContext();
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Better API URL handling for different environments
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Enhanced API URL detection with debugging
   const getApiUrl = () => {
-    // Check if we have an environment variable
-    if (process.env.REACT_APP_API_URL) {
-      return process.env.REACT_APP_API_URL;
-    }
+    const hostname = window.location.hostname;
+    console.log('🌐 Current hostname:', hostname);
     
-    // Fallback based on current environment
-    if (window.location.hostname === 'localhost') {
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      console.log('🏠 Using local API URL');
       return 'http://localhost:5000';
+    } else {
+      console.log('☁️ Using production API URL');
+      return 'https://order-management-fbre.onrender.com';
     }
-    
-    // For production, you'll need to set this to your Render URL
-    return 'https://order-management-fbre.onrender.com'; // Actual Render URL
   };
-  
-  const API_BASE = getApiUrl();
 
-  // Add debugging for API URL
-  useEffect(() => {
-    console.log('🌐 Current environment:', {
-      hostname: window.location.hostname,
-      apiUrl: API_BASE,
-      envVar: process.env.REACT_APP_API_URL
-    });
-  }, [API_BASE]);
+  const API_URL = getApiUrl();
+  console.log('🔗 Final API URL:', API_URL);
 
-  // Check for existing login on app start
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const token = localStorage.getItem('authToken');
-      console.log('🔍 Checking for existing auth token:', !!token);
+  // Enhanced fetch function with better error handling
+  const fetchWithAuth = async (endpoint, options = {}) => {
+    const token = localStorage.getItem('authToken');
+    console.log('🔐 Token exists:', !!token);
+    
+    const url = `${API_URL}${endpoint}`;
+    console.log('📡 Making request to:', url);
+    
+    const config = {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+        ...options.headers,
+      },
+    };
+
+    try {
+      console.log('⏳ Sending request...');
+      const response = await fetch(url, config);
       
-      if (token) {
-        console.log('🔑 Token found, fetching user data...');
-        await fetchUserData(token);
-      } else {
+      console.log('📊 Response status:', response.status);
+      console.log('📊 Response ok:', response.ok);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        
+        throw new Error(`API Error: ${response.status} - ${errorText || response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Request successful');
+      return data;
+    } catch (error) {
+      console.error('🚨 Fetch error details:', {
+        message: error.message,
+        stack: error.stack,
+        url: url,
+        config: config
+      });
+      throw error;
+    }
+  };
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      console.log('🔍 Checking authentication...');
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
         console.log('❌ No token found');
-        setIsLoading(false);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log('👤 Token found, fetching user data...');
+        setError(null);
+        
+        const userData = await fetchWithAuth('/api/auth/me');
+        console.log('✅ User data received:', userData);
+        
+        setUser(userData);
+      } catch (error) {
+        console.error('❌ Auth check failed:', error);
+        setError(error.message);
+        
+        // Clear invalid token
+        localStorage.removeItem('authToken');
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
     };
-    
-    initializeAuth();
+
+    checkAuth();
   }, []);
 
-  const fetchUserData = async (token) => {
-    try {
-      console.log('👤 Fetching user data from:', `${API_BASE}/api/auth/me`);
-      const response = await fetch(`${API_BASE}/api/auth/me`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('📡 Auth response status:', response.status);
-      
-      if (response.ok) {
-        const userData = await response.json();
-        const user = userData.user || userData;
-        
-        console.log('✅ User data received:', user);
-        
-        // Get branch name from multiple possible fields
-        const branchName = user.branchName || user.branch || 'Head Office';
-        
-        const userObj = {
-          id: user.id || user._id,
-          username: user.username,
-          displayName: user.displayName || user.username,
-          branch: branchName,
-          branchName: branchName,
-          branchCode: user.branchCode || 'HO',
-          role: user.role || 'staff'
-        };
-        
-        console.log('👤 Setting user state:', userObj);
-        setUser(userObj);
-        setIsAuthenticated(true);
-        setIsLoading(false);
-      } else {
-        console.error('❌ Auth response not OK:', response.status);
-        const errorText = await response.text();
-        console.error('❌ Auth error details:', errorText);
-        
-        // Only logout if token is actually invalid (401), not for server errors
-        if (response.status === 401) {
-          console.log('🚪 Token invalid, logging out...');
-          logout();
-        } else {
-          console.log('⚠️ Server error, but keeping session');
-          setIsLoading(false);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error fetching user data:', error);
-      
-      // Don't logout on network errors, keep the session
-      console.log('⚠️ Network error, but keeping token for retry');
-      setIsLoading(false);
-      
-      // Try to use cached user data if available
-      const cachedUserData = localStorage.getItem('cachedUserData');
-      if (cachedUserData) {
-        try {
-          const parsedUser = JSON.parse(cachedUserData);
-          console.log('📋 Using cached user data:', parsedUser);
-          setUser(parsedUser);
-          setIsAuthenticated(true);
-        } catch (parseError) {
-          console.error('❌ Failed to parse cached user data');
-        }
-      }
-    }
-  };
-
   const login = async (username, password) => {
+    console.log('🚪 Attempting login for:', username);
+    setLoading(true);
+    setError(null);
+
     try {
-      console.log('🔐 Attempting login for:', username);
-      console.log('🌐 API_BASE:', API_BASE);
-      console.log('🔗 Full login URL:', `${API_BASE}/api/auth/login`);
-      
-      const response = await fetch(`${API_BASE}/api/auth/login`, {
+      const response = await fetchWithAuth('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ username, password }),
       });
 
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Response OK:', response.ok);
+      console.log('✅ Login successful:', response);
       
-      const data = await response.json();
-      console.log('📡 Login response:', { status: response.status, hasToken: !!data.token });
-
-      if (response.ok && data.token) {
-        // Store only the auth token
-        localStorage.setItem('authToken', data.token);
-        
-        // Get branch name from multiple possible fields
-        const branchName = data.user.branchName || data.user.branch || 'Head Office';
-        
-        const userObj = {
-          id: data.user.id,
-          username: data.user.username,
-          displayName: data.user.displayName,
-          branch: branchName,
-          branchName: branchName,
-          branchCode: data.user.branchCode || 'HO',
-          role: data.user.role
-        };
-        
-        // Cache user data for offline access
-        localStorage.setItem('cachedUserData', JSON.stringify(userObj));
-        
-        setUser(userObj);
-        setIsAuthenticated(true);
-        
-        console.log('✅ Login successful');
-        return true;
+      const { token, user: userData } = response;
+      
+      if (token) {
+        localStorage.setItem('authToken', token);
+        setUser(userData);
+        console.log('💾 Token saved, user set');
+        return { success: true };
       } else {
-        console.error('❌ Login failed:', data.message);
-        return false;
+        throw new Error('No token received');
       }
     } catch (error) {
-      console.error('❌ Login error:', error);
-      return false;
+      console.error('❌ Login failed:', error);
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = () => {
     console.log('🚪 Logging out...');
     localStorage.removeItem('authToken');
-    localStorage.removeItem('cachedUserData');
     setUser(null);
-    setIsAuthenticated(false);
-    setIsLoading(false);
+    setError(null);
   };
 
-  // Add a method to refresh user data without logging out
-  const refreshUser = async () => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      await fetchUserData(token);
+  // Test server connectivity
+  const testConnection = async () => {
+    console.log('🔌 Testing server connection...');
+    try {
+      const response = await fetch(`${API_URL}/api/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Server is healthy:', data);
+        return true;
+      } else {
+        console.error('❌ Server health check failed:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Connection test failed:', error);
+      return false;
     }
   };
 
+  // Test connection on mount
+  useEffect(() => {
+    testConnection();
+  }, []);
+
+  const value = {
+    user,
+    loading,
+    error,
+    login,
+    logout,
+    fetchWithAuth,
+    testConnection,
+    API_URL
+  };
+
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      login, 
-      logout, 
-      isAuthenticated, 
-      isLoading,
-      refreshUser 
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  return useContext(AuthContext);
 };
