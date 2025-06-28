@@ -6,7 +6,6 @@ import SettingsPanel from './SettingsPanel';
 import styled from 'styled-components';
 import { useSwipeable } from 'react-swipeable';
 import { ClipboardList, FileText, LayoutDashboard, Settings } from 'lucide-react';
-import AnimatedTabs from './AnimatedTabs';
 
 const tabOrder = ['order', 'orders', 'summary', 'settings'];
 const tabIcons = {
@@ -84,12 +83,6 @@ const MainLayout = ({ isAdmin }) => {
       <TabContent>{renderTabContent()}</TabContent>
     </Container>
   );
-  
-  return (
-    <div>
-      <AnimatedTabs isAdmin={isAdmin} />
-    </div>
-  );
 };
 
 const Container = styled.div`
@@ -110,17 +103,21 @@ const TabsWrap = styled.div`
   --round: 10px;
   --p-x: 8px;
   --p-y: 4px;
-  --w-label: 180px; /* increased width */
+  --w-label: 130px;
   --theme: #49488D;
   display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
+  align-items: center;
   padding: var(--p-y) var(--p-x);
+  position: relative;
   background: #f9f9f9;
   border-radius: var(--round);
-  width: 100%;
-  max-width: 800px; /* control how wide it appears */
-  margin: 0 auto 12px auto;
+  max-width: 90%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  top: 0;
+  z-index: 1;
+  margin-top: 8px;
 
   input {
     display: none;
@@ -128,41 +125,65 @@ const TabsWrap = styled.div`
 
   .label {
     cursor: pointer;
-    font-size: 1rem; /* consistent font size */
-    font-weight: 600;
+    outline: none;
+    font-size: 0.875rem;
+    font-weight: bold;
     color: #333;
-    padding: 14px 20px;
+    background: transparent;
+    padding: 12px 16px;
     width: var(--w-label);
-    white-space: nowrap;
+    min-width: var(--w-label);
+    user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s ease-in-out;
+    z-index: 2;
+    -webkit-tap-highlight-color: transparent;
+    border-top: 0 solid transparent;
+    border-bottom: 2px solid transparent;
+    transition: background-color 0.3s ease, border-bottom 0.3s ease;
   }
 
   .label:hover::before {
     content: '';
     position: absolute;
-    inset: 0;
-    background-color: #6c6baf33; /* light hover overlay */
-    border-radius: var(--round);
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: #5f5ea340;
     z-index: -1;
+    border-radius: var(--round);
   }
 
   input:checked + .label {
     color: var(--theme);
-    border-top: 3px solid var(--theme);
     border-bottom: 3px solid var(--theme);
-    font-weight: bold;
   }
 
   .bar,
   .slidebar {
-    display: none; /* hide default bars */
+    position: absolute;
+    height: calc(100% - (var(--p-y) * 4));
+    width: var(--w-label);
+    border-radius: calc(var(--round) - var(--p-y));
+    background: #f0f0f0;
+    transform-origin: 0 0 0;
+    z-index: 0;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    will-change: transform;
+  }
+
+  .bar {
+    background: var(--theme);
+    height: 3px;
+    width: var(--w-label);
+    top: 100%;
+    border-radius: 9999px 9999px 0 0;
   }
 `;
-
 
 export default MainLayout;

@@ -1,523 +1,464 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins&display=swap');
-
-* {
-  font-family: 'Poppins', sans-serif;
-  box-sizing: border-box;
-}
+/* OrderTabs.css - Enhanced Styling */
 
 .order-tabs {
   padding: 20px;
-  overflow-x: auto;
+  background-color: #f8f9fa;
+  min-height: 100vh;
 }
 
-/* 📱 Responsive Filters Bar */
 .filters-bar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  margin-bottom: 20px;
-  align-items: end;
-}
-
-/* Special grid area for buttons */
-.filter-actions {
-  display: flex;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
-  justify-self: end;
-  align-self: end;
+  align-items: end;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
-  font-size: 14px;
-  min-width: 0; /* Prevents overflow */
+  gap: 4px;
 }
 
 .filter-group label {
-  margin-bottom: 4px;
-  font-weight: 500;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: #333;
-  white-space: nowrap;
+  margin-bottom: 4px;
 }
 
-.filter-input {
+.filter-group input,
+.filter-group select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-actions button {
   padding: 8px 12px;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  width: 100%;
-  min-width: 0;
-}
-
-/* Remove fixed widths for responsiveness */
-.filter-input.short,
-.filter-input.medium {
-  width: 100%;
-}
-
-/* 🎯 Responsive Buttons */
-.search-btn {
-  padding: 10px 16px;
-  font-size: 14px;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
-  border: 1px solid #4CAF50;
-  background-color: #4CAF50;
-  color: white;
-  border-radius: 5px;
-  white-space: nowrap;
-  min-width: 80px;
-  height: fit-content;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
 }
 
-.search-btn:hover {
-  background-color: #45a049;
+.filter-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.filter-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.search-btn {
+  background-color: #28a745;
+  color: white;
+}
+
+.search-btn:hover:not(:disabled) {
+  background-color: #218838;
 }
 
 .clear-btn {
-  padding: 10px 16px;
-  font-size: 14px;
-  cursor: pointer;
-  border: 1px solid #f44336;
-  background-color: #f44336;
+  background-color: #6c757d;
   color: white;
-  border-radius: 5px;
-  white-space: nowrap;
-  min-width: 80px;
-  height: fit-content;
 }
 
 .clear-btn:hover {
-  background-color: #d32f2f;
+  background-color: #5a6268;
 }
 
-button {
-  padding: 8px 12px;
-  font-size: 14px;
-  cursor: pointer;
-  border: 1px solid #ccc;
+.loading-container,
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  font-size: 1.1rem;
+  color: #666;
   background-color: white;
-  border-radius: 5px;
-  transition: all 0.2s ease;
-}
-
-button:hover {
-  background-color: #f1f1f1;
-}
-
-/* 📋 Responsive Table Container */
-.table-container {
-  overflow-x: auto;
-  margin-top: 20px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-table {
-  width: 100%;
-  min-width: 1200px; /* Minimum width to prevent crushing */
-  border-collapse: collapse;
-  font-size: 14px;
+.table-container {
+  overflow-x: auto;
   background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-thead {
+.table-container table {
+  width: 100%;
+  min-width: 1200px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table-container th {
   background-color: #f8f9fa;
+  padding: 12px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #dee2e6;
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-th {
+.table-container td {
   padding: 12px 8px;
-  border-bottom: 2px solid #dee2e6;
-  text-align: left;
-  font-weight: 600;
-  color: #495057;
-  white-space: nowrap;
-}
-
-td {
-  padding: 10px 8px;
-  border-bottom: 1px solid #e0e0e0;
-  text-align: left;
+  border-bottom: 1px solid #eee;
   vertical-align: middle;
 }
 
-/* Specific column widths for better layout */
-th:nth-child(1), td:nth-child(1) { width: 120px; } /* Order No */
-th:nth-child(2), td:nth-child(2) { width: 150px; } /* Customer */
-th:nth-child(3), td:nth-child(3) { width: 120px; } /* Phone */
-th:nth-child(4), td:nth-child(4) { width: 140px; } /* Delivery */
-th:nth-child(5), td:nth-child(5) { width: 80px; }  /* Time */
-th:nth-child(6), td:nth-child(6) { width: 100px; } /* Occasion */
-th:nth-child(7), td:nth-child(7) { width: 100px; } /* Branch */
-th:nth-child(8), td:nth-child(8) { width: 100px; } /* Total */
-th:nth-child(9), td:nth-child(9) { width: 80px; }  /* Status */
-th:nth-child(10), td:nth-child(10) { width: 100px; } /* Balance */
-th:nth-child(11), td:nth-child(11) { width: 140px; } /* Progress */
-th:nth-child(12), td:nth-child(12) { width: 120px; } /* Actions */
-
-tr:nth-child(even) {
+.table-container tr:hover {
   background-color: #f8f9fa;
 }
 
-tr:hover {
-  background-color: #e3f2fd;
+.main-order {
+  transition: background-color 0.2s;
 }
 
-/* Responsive text wrapping for smaller cells */
-.customer-cell,
-.phone-cell {
-  word-break: break-word;
-  max-width: 150px;
+.main-order:hover {
+  background-color: #f0f8f0 !important;
 }
 
-/* Action buttons styling */
-.action-buttons {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+.sub-order {
+  background-color: #f8f9fa !important;
 }
 
-td button {
-  margin: 1px;
-  background: none;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-  color: #666;
-  padding: 4px 6px;
-  border-radius: 3px;
-  transition: all 0.2s ease;
+.sub-order:hover {
+  background-color: #e9ecef !important;
 }
 
-td button:hover {
-  background-color: rgba(74, 144, 226, 0.1);
-  color: #4a90e2;
+.fully-paid-row {
+  background-color: #f0f8f0 !important;
 }
 
-/* 🏷️ Badge Base */
-.badge {
-  display: inline-block;
-  padding: 4px 8px;
+.balance-cell {
+  min-width: 100px;
+}
+
+.balance-cell.fully-paid {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  padding: 8px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.85rem;
 }
 
-/* 🚚 Delivery Tag Colors */
+.balance-cell.pending-payment {
+  text-align: center;
+  font-weight: bold;
+  color: #d32f2f;
+  font-size: 0.9rem;
+}
+
 .delivery-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 120px;
+  min-width: 160px;
 }
 
 .delivery-date {
-  font-size: 13px;
-  color: #333;
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .badge.tag {
-  font-size: 10px;
+  background-color: #fff3cd;
+  color: #856404;
+  font-size: 0.75rem;
   padding: 2px 6px;
 }
 
-/* Delivery tag colors */
-.badge.tag:contains("Today") {
-  background-color: #fff3cd;
-  color: #856404;
-}
-
-.badge.tag:contains("Tomorrow") {
-  background-color: #d1ecf1;
-  color: #0c5460;
-}
-
-.badge.tag:contains("Upcoming") {
-  background-color: #e6f4ea;
-  color: #1b5e20;
-}
-
-.badge.tag:contains("Due") {
-  background-color: #fdecea;
-  color: #c62828;
-}
-
-/* 📌 Order Status Colors */
 .badge.saved {
-  background-color: #e2e3e5;
-  color: #6c757d;
-}
-
-.badge.held {
-  background-color: #d1ecf1;
-  color: #0c5460;
-}
-
-.badge.auto-saved {
-  background-color: #fff3cd;
-  color: #856404;
-}
-
-/* 📦 Order Progress Colors */
-.progress-select {
-  font-size: 12px;
-  padding: 4px 6px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background-color: white;
-  min-width: 120px;
-}
-
-.badge.progress.packed {
-  background-color: #d1ecf1;
-  color: #0c5460;
-}
-
-.badge.progress.delivered {
-  background-color: #c3e6cb;
-  color: #155724;
-}
-
-.badge.progress.completed {
   background-color: #d4edda;
   color: #155724;
 }
 
-.badge.progress.cancelled {
+.badge.held {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.badge.auto-saved {
   background-color: #f8d7da;
   color: #721c24;
 }
 
-.badge.progress.pending {
-  background-color: #fefefe;
-  color: #6c757d;
+.customer-cell,
+.phone-cell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Expand/Collapse Toggle Button */
-.expand-toggle {
-  margin: 10px 0 15px 0;
-  padding: 6px 14px;
-  font-weight: 500;
-  font-size: 14px;
-  background-color: #4a90e2;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
+.progress-select {
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  font-size: 0.85rem;
+  background-color: white;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  width: 130px;
+  transition: border-color 0.2s;
 }
 
-.expand-toggle:hover {
-  background-color: #357abd;
+.progress-select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
 }
 
-/* Sub-order row styling */
-.sub-order {
-  background-color: #fafafa !important;
+.progress-select:disabled {
+  background-color: #f8f9fa;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
-.sub-order td {
-  font-size: 13px;
-  color: #666;
-  border-top: 1px dashed #ccc;
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 180px;
 }
 
-.sub-order td:first-child {
-  font-style: italic;
-  padding-left: 20px;
+.action-buttons button {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
 }
 
-/* 📱 Mobile Responsive Breakpoints */
-@media (max-width: 1400px) {
-  .filters-bar {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+.action-buttons button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.action-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.action-buttons button[title*="Edit"] {
+  background-color: #007bff;
+  color: white;
+}
+
+.action-buttons button[title*="Edit"]:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.action-buttons button[title*="Edit"]:disabled {
+  background-color: #f8f9fa;
+  color: #999;
+}
+
+.action-buttons button[title*="View"] {
+  background-color: #28a745;
+  color: white;
+}
+
+.action-buttons button[title*="View"]:hover {
+  background-color: #218838;
+}
+
+.action-buttons button[title*="Print"] {
+  background-color: #6c757d;
+  color: white;
+}
+
+.action-buttons button[title*="Print"]:hover {
+  background-color: #5a6268;
+}
+
+.action-buttons button[title*="Delete"] {
+  background-color: #dc3545;
+  color: white;
+}
+
+.action-buttons button[title*="Delete"]:hover {
+  background-color: #c82333;
+}
+
+.changelog-active {
+  background-color: #667eea !important;
+  color: white !important;
+  position: relative;
+}
+
+.changelog-inactive {
+  background-color: #f0f0f0 !important;
+  color: #666 !important;
+}
+
+.changelog-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ff4444;
+  color: white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
   }
-  
-  table {
-    min-width: 1000px;
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
-@media (max-width: 1200px) {
-  .order-tabs {
-    padding: 15px;
-  }
-  
-  .filters-bar {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-  }
-  
-  table {
-    font-size: 13px;
-    min-width: 900px;
-  }
-  
-  th, td {
-    padding: 8px 6px;
-  }
-}
-
+/* Responsive Design */
 @media (max-width: 768px) {
+  .filters-bar {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .filter-actions {
+    justify-content: center;
+  }
+  
+  .table-container {
+    font-size: 0.8rem;
+  }
+  
+  .table-container th,
+  .table-container td {
+    padding: 8px 4px;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  
+  .action-buttons button {
+    width: 28px;
+    height: 28px;
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 480px) {
   .order-tabs {
     padding: 10px;
   }
   
   .filters-bar {
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    padding: 10px;
   }
   
-  .filter-actions {
-    grid-column: 1 / -1;
-    justify-self: center;
-    margin-top: 10px;
+  .table-container {
+    font-size: 0.75rem;
   }
   
-  table {
-    font-size: 12px;
-    min-width: 800px;
+  .progress-select {
+    width: 100px;
+    font-size: 0.75rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .filters-bar,
+  .action-buttons {
+    display: none !important;
   }
   
-  th, td {
-    padding: 6px 4px;
+  .table-container {
+    box-shadow: none;
+  }
+  
+  .table-container table {
+    font-size: 0.8rem;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .action-buttons button,
+  .filter-actions button,
+  .main-order,
+  .changelog-badge {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .table-container {
+    border: 2px solid #000;
+  }
+  
+  .table-container th {
+    background-color: #000;
+    color: #fff;
   }
   
   .badge {
-    font-size: 10px;
-    padding: 2px 6px;
+    border: 1px solid #000;
   }
-}
-
-@media (max-width: 480px) {
-  .filters-bar {
-    grid-template-columns: 1fr;
-  }
-  
-  .filter-actions {
-    grid-column: 1;
-    justify-self: stretch;
-  }
-  
-  .search-btn,
-  .clear-btn {
-    flex: 1;
-  }
-}
-
-/* Loading state */
-.loading-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 40px;
-  font-size: 16px;
-  color: #666;
-}
-
-/* Empty state */
-.empty-state {
-  text-align: center;
-  padding: 40px;
-  color: #999;
-  font-size: 16px;
-}
-
-/* Add these styles to your OrderTabs.css file */
-
-/* Balance Cell Styles */
-.balance-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 100px;
-  font-size: 14px;
-}
-
-.balance-cell.fully-paid {
-  background-color: #e8f5e9 !important;
-  color: #2e7d32 !important;
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-weight: bold;
-  border: 1px solid #4caf50;
-}
-
-.balance-cell.pending-payment {
-  color: #d32f2f;
-  font-weight: bold;
-  font-size: 15px;
-}
-
-/* Row styling for fully paid orders */
-.fully-paid-row {
-  background-color: #f1f8e9 !important;
-}
-
-.fully-paid-row:hover {
-  background-color: #e8f5e9 !important;
-}
-
-/* Ensure the check icon is properly aligned */
-.balance-cell .fa-check {
-  margin-right: 5px;
-  font-size: 12px;
-}
-
-/* Table cell padding adjustments */
-.order-tabs table td {
-  padding: 8px 12px;
-  vertical-align: middle;
-}
-
-/* Responsive adjustments for balance column */
-@media (max-width: 768px) {
-  .balance-cell {
-    min-width: 80px;
-    font-size: 12px;
-  }
-  
-  .balance-cell.fully-paid {
-    padding: 6px 8px;
-  }
-}
-
-/* Add these specific styles to your OrderTabs.css file */
-
-/* Fully paid row styling */
-.fully-paid-row {
-  background-color: #f1f8e9 !important;
-  border-left: 4px solid #4caf50 !important;
-}
-
-.fully-paid-row:hover {
-  background-color: #e8f5e9 !important;
-}
-
-/* Sub-order rows for fully paid */
-.fully-paid-row.sub-order {
-  background-color: #f9fdf9 !important;
-  border-left: 4px solid #81c784 !important;
-}
-
-.fully-paid-row.sub-order:hover {
-  background-color: #f1f8e9 !important;
-}
-
-/* Balance cell styling */
-.balance-cell.fully-paid {
-  background-color: #e8f5e9 !important;
-  color: #2e7d32 !important;
-  border: 1px solid #4caf50 !important;
-  box-shadow: 0 1px 3px rgba(76, 175, 80, 0.2);
-}
-
-/* Ensure check icon alignment */
-.balance-cell .fa-check {
-  margin-right: 5px;
-  font-size: 12px;
 }

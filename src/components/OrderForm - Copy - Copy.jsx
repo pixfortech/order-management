@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { FaEdit } from 'react-icons/fa';
 import '../appResponsive.css';
-import FancyButton from './FancyButton';
-import styled from 'styled-components';
 
 // ============================================================================
 // GLOBAL VARIABLES & UTILITIES
@@ -102,35 +100,6 @@ const OrderForm = React.forwardRef(({ selectedOrder, setSelectedOrder, onOrderUp
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [brandDetails, setBrandDetails] = useState({ displayName: 'Loading...', name: 'Brand' });
   const [selectedBranch, setSelectedBranch] = useState(null);
-  
-  const [buttonState, setButtonState] = useState({
-    saved: false,
-    held: false,
-    newOrder: false,
-  });
-  
-  const [saved, setSaved] = useState(false);
-const [held, setHeld] = useState(false);
-const [newOrder, setNewOrder] = useState(false);
-
-const ButtonContainer = styled.div`
-  display: flex;
-  gap: 1rem;
-  margin-top: 2rem;
-  flex-wrap: wrap;
-
-  button {
-    transition: background-color 0.5s ease, color 0.5s ease;
-  }
-
-  .button-inner-static {
-    display: inline-block;
-    position: relative;
-    transition: opacity 0.5s ease, transform 0.5s ease;
-    white-space: nowrap;
-  }
-`;
-
   
   // User Information
   const [currentUser, setCurrentUser] = useState({
@@ -1141,8 +1110,7 @@ useEffect(() => {
       setOrderNumberError(!isUnique);
     }, 500);
 
-    
-return () => clearTimeout(delay);
+    return () => clearTimeout(delay);
   }, [orderInfo.orderPrefix, orderInfo.orderNumber, editOrderNumber, editingOrderId]);
 
   // Before unload warning
@@ -1217,32 +1185,6 @@ return () => clearTimeout(delay);
       ref?.current?.resetForm();
     }
   };
-  
-  const animateButton = useCallback((key) => {
-    setButtonState((prev) => ({ ...prev, [key]: true }));
-    setTimeout(() => {
-      setButtonState((prev) => ({ ...prev, [key]: false }));
-    }, 2000);
-  }, []);
-
-  const handleSaveOrder = async () => {
-    await new Promise((res) => setTimeout(res, 500));
-    animateButton('saved');
-    return true;
-  };
-
-  const handleHoldOrder = async () => {
-    await new Promise((res) => setTimeout(res, 500));
-    animateButton('held');
-    return true;
-  };
-
-  const handleNewOrder = async () => {
-    await new Promise((res) => setTimeout(res, 500));
-    animateButton('newOrder');
-    return true;
-  };
-
 
   // ==========================================================================
   // RENDER COMPONENT
@@ -2051,41 +1993,10 @@ return () => clearTimeout(delay);
       {/* Action Buttons */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div className="button-group">
-  <ButtonContainer>
-      <FancyButton
-        defaultText="Save Order"
-        hoverText="Click to save"
-        successText="Saved"
-        defaultColor="#49488D"
-        hoverColor="#FFD700"
-        successColor="#28a745"
-        onClick={handleSaveOrder}
-        isSuccess={buttonState.saved}
-      />
-
-      <FancyButton
-        defaultText="Hold Order"
-        hoverText="Temporarily hold"
-        successText="Held"
-        defaultColor="#8884D8"
-        hoverColor="#FFD700"
-        successColor="#FFA500"
-        onClick={handleHoldOrder}
-        isSuccess={buttonState.held}
-      />
-
-      <FancyButton
-        defaultText="New Order"
-        hoverText="Start fresh"
-        successText="Reset"
-        defaultColor="#764ba2"
-        hoverColor="#FFD700"
-        successColor="#20B2AA"
-        onClick={handleNewOrder}
-        isSuccess={buttonState.newOrder}
-      />
-    </ButtonContainer>
-</div>
+          <button onClick={(e) => handleSubmit(e, 'saved')}>💾 Save Order</button>
+          <button onClick={(e) => handleSubmit(e, 'held')} className="btn-secondary">✋ Hold Order</button>
+          <button onClick={handleNewOrderClick} className="btn-secondary">🆕 New Order</button>
+        </div>
       </div>
       
       {/* Notes Section */}

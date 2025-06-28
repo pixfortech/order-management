@@ -1073,30 +1073,3 @@ tr:hover {
     animation: none;
   }
 }
-
-/* ===== DARK MODE SUPPORT (Enhanced) ===== */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background-color: #1a1a1a;
-    --card-background: #2d2d2d;
-    --text-color: #e0e0e0;
-    --text-color-muted: #a0a0a0;
-    --border-color: #404040;
-    --light-color: #3a3a3a;
-  }
-  
-  .branch-badge {
-    box-shadow: 0 4px 12px rgba(233, 30, 99, 0.4);
-  }
-  
-  .editing-notice {
-    background: linear-gradient(135deg, #4a3728, #3d2914);
-    color: #ffd54f;
-    border-color: #ff8f00;
-    box-shadow: 0 4px 12px rgba(255, 143, 0, 0.3);
-  }
-  
-  .editing-notice::before {
-    background: linear-gradient(to bottom, #ff8f00, #f57c00);
-  }
-}

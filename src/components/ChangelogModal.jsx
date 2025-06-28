@@ -8,123 +8,125 @@ const ChangelogModal = ({ orderId, orderNumber, onClose }) => {
 
   console.log('📋 ChangelogModal rendered with:', { orderId, orderNumber });
 
-  // Replace the fetchChangelog function in ChangelogModal.jsx with this enhanced version:
+  // Use the same API URL logic as OrderForm
+  const getApiUrl = () => {
+    const envUrl = process.env.REACT_APP_API_URL;
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isLocalNetwork = hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.');
+    
+    if (isLocalNetwork) {
+      return `http://${hostname.replace(':3000', '')}:5000`;
+    }
+    
+    if (!isLocalhost && !isLocalNetwork) {
+      return 'https://order-management-fbre.onrender.com';
+    }
+    
+    if (envUrl) return envUrl;
+    
+    if (isLocalhost) return 'http://localhost:5000';
+    
+    return 'https://order-management-fbre.onrender.com';
+  };
 
-useEffect(() => {
-  const fetchChangelog = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const token = localStorage.getItem('authToken');
-      
-      const getApiUrl = () => {
-        if (window.location.hostname === 'localhost') {
-          return 'http://localhost:5000';
-        }
-        return 'https://order-management-fbre.onrender.com';
-      };
-      
-      const apiUrl = getApiUrl();
-      const endpoint = `${apiUrl}/api/changelog/order/${orderId}`;
-      
-      console.log('📋 ChangelogModal Debug Info:', {
-        orderId: orderId,
-        orderNumber: orderNumber,
-        apiUrl: apiUrl,
-        endpoint: endpoint,
-        token: token ? 'Present' : 'Missing',
-        tokenLength: token ? token.length : 0
-      });
-      
-      console.log('📋 Making API call to:', endpoint);
-      
-      const response = await fetch(endpoint, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('📋 Response details:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        headers: {
-          contentType: response.headers.get('content-type'),
-          contentLength: response.headers.get('content-length')
-        }
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Changelog API error response:', {
+  // Add authentication helper
+  const getAuthToken = () => localStorage.getItem('authToken');
+
+  useEffect(() => {
+    const fetchChangelog = async () => {
+      // Don't make API calls if essential data is missing
+      if (!orderId) {
+        console.error('❌ No orderId provided to ChangelogModal');
+        setError('No order ID provided');
+        setIsLoading(false);
+        return;
+      }
+
+      const token = getAuthToken();
+      if (!token) {
+        console.error('❌ No auth token available');
+        setError('Authentication required');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const baseUrl = `${getApiUrl()}/api`;
+        const endpoint = `${baseUrl}/changelog/order/${orderId}`;
+        
+        console.log('📋 ChangelogModal Debug Info:', {
+          orderId: orderId,
+          orderNumber: orderNumber,
+          baseUrl: baseUrl,
+          endpoint: endpoint,
+          token: token ? 'Present' : 'Missing'
+        });
+        
+        const response = await fetch(endpoint, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('📋 Response details:', {
           status: response.status,
           statusText: response.statusText,
-          errorText: errorText,
-          headers: Object.fromEntries(response.headers.entries())
+          ok: response.ok
         });
-        throw new Error(`Failed to fetch changelog: ${response.status} - ${errorText}`);
-      }
-      
-      const responseText = await response.text();
-      console.log('📋 Raw response text:', responseText);
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-        console.log('📋 Parsed response data:', {
-          dataType: typeof data,
-          isArray: Array.isArray(data),
-          length: Array.isArray(data) ? data.length : 'N/A',
-          keys: typeof data === 'object' ? Object.keys(data) : 'N/A',
-          fullData: data
-        });
-      } catch (parseError) {
-        console.error('❌ Failed to parse JSON response:', parseError);
-        throw new Error('Invalid JSON response from server');
-      }
-      
-      setChangelog(Array.isArray(data) ? data : []);
-      
-      // Additional debug info
-      if (Array.isArray(data) && data.length === 0) {
-        console.log('⚠️ Changelog is empty. Possible reasons:');
-        console.log('1. No changelog entries exist for this order ID:', orderId);
-        console.log('2. Order ID format mismatch');
-        console.log('3. Database/collection mismatch');
-        console.log('4. Authorization issue');
         
-        // Try to verify the order ID format
-        console.log('🔍 Order ID verification:', {
-          orderId: orderId,
-          orderIdType: typeof orderId,
-          orderIdLength: orderId ? orderId.length : 0,
-          isValidObjectId: /^[a-fA-F0-9]{24}$/.test(orderId)
-        });
+        if (!response.ok) {
+          let errorMessage = `Failed to fetch changelog: ${response.status}`;
+          
+          if (response.status === 404) {
+            errorMessage = 'Changelog endpoint not found. Make sure the backend changelog routes are properly configured.';
+          } else if (response.status === 401) {
+            errorMessage = 'Authentication failed. Please log in again.';
+          } else if (response.status === 403) {
+            errorMessage = 'Access denied. Admin privileges required.';
+          } else if (response.status >= 500) {
+            errorMessage = 'Server error. Please try again later.';
+          }
+          
+          throw new Error(errorMessage);
+        }
+        
+        const responseText = await response.text();
+        console.log('📋 Raw response text:', responseText);
+        
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('❌ Failed to parse JSON response:', parseError);
+          throw new Error('Invalid response from server');
+        }
+        
+        setChangelog(Array.isArray(data) ? data : []);
+        
+        if (Array.isArray(data) && data.length === 0) {
+          console.log('⚠️ No changelog entries found for order:', orderId);
+        }
+        
+      } catch (err) {
+        console.error('❌ Changelog fetch error:', err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
       }
-      
-    } catch (err) {
-      console.error('❌ Complete error details:', {
-        error: err,
-        message: err.message,
-        stack: err.stack,
-        orderId: orderId,
-        orderNumber: orderNumber
-      });
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  if (orderId) {
-    fetchChangelog();
-  } else {
-    console.error('❌ No orderId provided to ChangelogModal');
-    setError('No order ID provided');
-    setIsLoading(false);
-  }
-}, [orderId]);
+    };
+    
+    // Add a small delay to prevent immediate API calls on app load
+    const timeoutId = setTimeout(() => {
+      fetchChangelog();
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [orderId]);
 
   const formatTimestamp = (timestamp) => {
     try {
@@ -179,7 +181,7 @@ useEffect(() => {
     }
   };
 
-  // Fixed modal styles
+  // Modal styles
   const modalOverlayStyle = {
     position: 'fixed',
     top: 0,
@@ -227,7 +229,8 @@ useEffect(() => {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '1.2rem'
+    fontSize: '1.2rem',
+    transition: 'background 0.2s'
   };
 
   const contentStyle = {
@@ -247,7 +250,21 @@ useEffect(() => {
             </button>
           </div>
           <div style={{ ...contentStyle, textAlign: 'center' }}>
-            <div>Loading...</div>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              height: '200px'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: '4px solid #f3f3f3',
+                borderTop: '4px solid #667eea',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+            </div>
           </div>
         </div>
       </div>
@@ -265,7 +282,17 @@ useEffect(() => {
             </button>
           </div>
           <div style={{ ...contentStyle, textAlign: 'center', color: '#d32f2f' }}>
-            <p>Failed to load order history: {error}</p>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
+            <p style={{ marginBottom: '20px' }}>Failed to load order history:</p>
+            <p style={{ 
+              background: '#ffebee',
+              padding: '15px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '1px solid #ffcdd2'
+            }}>
+              {error}
+            </p>
             <button 
               onClick={onClose} 
               style={{
@@ -274,7 +301,8 @@ useEffect(() => {
                 border: 'none',
                 padding: '10px 20px',
                 borderRadius: '6px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                fontWeight: 500
               }}
             >
               Close
@@ -298,7 +326,11 @@ useEffect(() => {
         <div style={contentStyle}>
           {changelog.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#666', fontStyle: 'italic', padding: '40px' }}>
+              <div style={{ fontSize: '48px', marginBottom: '20px' }}>📋</div>
               <p>No history available for this order.</p>
+              <p style={{ fontSize: '0.9rem', marginTop: '10px' }}>
+                This could mean the order was created before changelog tracking was enabled.
+              </p>
             </div>
           ) : (
             <div>
@@ -465,7 +497,8 @@ useEffect(() => {
               padding: '10px 20px',
               borderRadius: '6px',
               cursor: 'pointer',
-              fontWeight: 500
+              fontWeight: 500,
+              transition: 'background 0.2s'
             }}
           >
             Close

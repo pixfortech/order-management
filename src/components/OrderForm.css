@@ -1386,29 +1386,107 @@ tr:hover {
   }
 }
 
-/* ===== DARK MODE SUPPORT (Enhanced) ===== */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background-color: #1a1a1a;
-    --card-background: #2d2d2d;
-    --text-color: #e0e0e0;
-    --text-color-muted: #a0a0a0;
-    --border-color: #404040;
-    --light-color: #3a3a3a;
+/* Enhanced Button Hover Effects - Add to your OrderForm.css */
+
+/* Base states for animation elements */
+.enhanced-button .button-inner {
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.enhanced-button .button-inner-static {
+  opacity: 1;
+  transform: translateY(0);
+  transition: transform 1.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s linear;
+  position: relative;
+  z-index: 2;
+}
+
+.enhanced-button .button-inner-hover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% + 70%));
+  opacity: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  width: 100%;
+  transition: transform 1.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 1.4s cubic-bezier(0.19, 1, 0.22, 1);
+  z-index: 1;
+}
+
+.enhanced-button .button-bg-layer-1,
+.enhanced-button .button-bg-layer-2,
+.enhanced-button .button-bg-layer-3 {
+  transform: scale(0);
+  transition: transform 1.3s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s linear;
+}
+
+.enhanced-button .button-bg-layer-2 {
+  transition-delay: 0.1s;
+}
+
+.enhanced-button .button-bg-layer-3 {
+  transition-delay: 0.2s;
+}
+
+/* Hover animations for enhanced buttons */
+.enhanced-button:hover .button-inner-static {
+  opacity: 0 !important;
+  transform: translateY(-70%) !important;
+}
+
+.enhanced-button:hover .button-inner-hover {
+  opacity: 1 !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.enhanced-button:hover .button-bg-layer-1 {
+  transform: scale(1) !important;
+}
+
+.enhanced-button:hover .button-bg-layer-2 {
+  transform: scale(1) !important;
+  transition-delay: 0.1s;
+}
+
+.enhanced-button:hover .button-bg-layer-3 {
+  transform: scale(1) !important;
+  transition-delay: 0.2s;
+}
+
+/* Enhanced button focus states */
+.enhanced-button:focus-visible {
+  outline: 2px solid var(--theme-color) !important;
+  outline-offset: 2px !important;
+}
+
+/* Enhanced button active state */
+.enhanced-button:active {
+  transform: scale(0.98) !important;
+}
+
+/* Responsive adjustments for enhanced buttons */
+@media (max-width: 768px) {
+  .enhanced-button {
+    height: 3rem !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+    font-size: 0.9rem !important;
+    min-width: 100px !important;
   }
   
-  .branch-badge {
-    box-shadow: 0 4px 12px rgba(233, 30, 99, 0.4);
-  }
-  
-  .editing-notice {
-    background: linear-gradient(135deg, #4a3728, #3d2914);
-    color: #ffd54f;
-    border-color: #ff8f00;
-    box-shadow: 0 4px 12px rgba(255, 143, 0, 0.3);
-  }
-  
-  .editing-notice::before {
-    background: linear-gradient(to bottom, #ff8f00, #f57c00);
+  .enhanced-button.btn-lg {
+    height: 3.5rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    font-size: 1rem !important;
   }
 }
