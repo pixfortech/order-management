@@ -23,25 +23,24 @@ const getAuthToken = () => localStorage.getItem('authToken');
 
 const apiCall = async (endpoint, options = {}) => {
   const getApiUrl = () => {
-    const envUrl = process.env.REACT_APP_API_URL;
-    const hostname = window.location.hostname;
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-    const isLocalNetwork = hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.');
-    
-    if (isLocalNetwork) {
-      return `http://${hostname.replace(':3000', '')}:5000`;
-    }
-    
-    if (!isLocalhost && !isLocalNetwork) {
-      return 'https://order-management-fbre.onrender.com';
-    }
-    
-    if (envUrl) return envUrl;
-    
-    if (isLocalhost) return 'http://localhost:5000';
-    
+  // First priority: environment variable
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Second priority: production domain check
+  if (window.location.hostname.includes('vercel.app')) {
     return 'https://order-management-fbre.onrender.com';
-  };
+  }
+  
+  // Third priority: localhost check
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:5000';
+  }
+  
+  // Default: production backend
+  return 'https://order-management-fbre.onrender.com';
+};
   
   const baseUrl = `${getApiUrl()}/api`;
   const url = `${baseUrl}${endpoint}`;
