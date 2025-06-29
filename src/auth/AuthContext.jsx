@@ -1,4 +1,4 @@
-// AuthContext.jsx - Clean version without debug components
+// AuthContext.jsx - Fixed version with proper state management
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
@@ -13,21 +13,34 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // ✅ ADDED: Missing state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Simple API URL detection
+  // Enhanced API URL detection with environment variable support
   const getApiUrl = () => {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:5000';
-    } else {
+    // First priority: environment variable
+    if (process.env.REACT_APP_API_URL) {
+      return process.env.REACT_APP_API_URL;
+    }
+    
+    // Second priority: production domain check
+    if (window.location.hostname.includes('vercel.app')) {
       return 'https://order-management-fbre.onrender.com';
     }
+    
+    // Third priority: localhost check
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+    
+    // Default: production backend
+    return 'https://order-management-fbre.onrender.com';
   };
 
   const API_URL = getApiUrl();
 
-  // Simple fetch function with auth
+  // Enhanced fetch function with better error handling
   const fetchWithAuth = async (endpoint, options = {}) => {
     const token = localStorage.getItem('authToken');
     
@@ -43,10 +56,20 @@ export const AuthProvider = ({ children }) => {
     };
 
     try {
+      console.log(`🌐 Making request to: ${url}`);
       const response = await fetch(url, config);
       
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ API Error: ${response.status} - ${errorText}`);
+        
+        // If 401, clear invalid token
+        if (response.status === 401) {
+          localStorage.removeItem('authToken');
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+        
         throw new Error(`API Error: ${response.status} - ${errorText || response.statusText}`);
       }
 
@@ -59,113 +82,122 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Check if user is already logged in
-  useEffect(() => {
-    const checkAuth = async () => {
-  const token = localStorage.getItem('authToken');
-  
-  // ✅ ADD: Debug logging
-  console.log('🔍 Checking auth - Token exists:', !!token);
-  console.log('🔍 Token preview:', token ? token.substring(0, 20) + '...' : 'No token');
-  console.log('🔍 API URL:', process.env.REACT_APP_API_URL || 'Using fallback URL');
-  
-  if (!token) {
-    console.log('❌ No token found, user not authenticated');
-    setUser(null);
-    setIsAuthenticated(false);
-    setLoading(false);
-    return;
-  }
-
-  try {
-    // Make sure we're using the correct API URL
-    const apiUrl = process.env.REACT_APP_API_URL || 'https://order-management-fbre.onrender.com';
-    console.log('🌐 Making auth check request to:', `${apiUrl}/api/auth/me`);
+  const checkAuth = async () => {
+    const token = localStorage.getItem('authToken');
     
-    const response = await fetch(`${apiUrl}/api/auth/me`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    console.log('🔍 Checking auth - Token exists:', !!token);
+    console.log('🔍 API URL being used:', API_URL);
+    
+    if (!token) {
+      console.log('❌ No token found, user not authenticated');
+      setUser(null);
+      setIsAuthenticated(false);
+      setLoading(false);
+      return;
+    }
 
-    console.log('📡 Auth response status:', response.status);
-
-    if (response.ok) {
-      const userData = await response.json();
-      console.log('✅ Auth successful, user:', userData.username);
-      setUser(userData);
-      setIsAuthenticated(true);
-    } else {
-      const errorData = await response.text();
-      console.log('❌ Auth failed:', response.status, errorData);
+    try {
+      console.log('🌐 Making auth check request to:', `${API_URL}/api/auth/me`);
       
-      // Clear invalid token
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('📡 Auth response status:', response.status);
+
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ Auth successful, user:', userData.username || userData.name);
+        setUser(userData);
+        setIsAuthenticated(true);
+        setError(null);
+      } else {
+        const errorData = await response.text();
+        console.log('❌ Auth failed:', response.status, errorData);
+        
+        // Clear invalid token
+        localStorage.removeItem('authToken');
+        setUser(null);
+        setIsAuthenticated(false);
+        setError('Authentication failed');
+      }
+    } catch (error) {
+      console.error('❌ Auth check error:', error);
       localStorage.removeItem('authToken');
       setUser(null);
       setIsAuthenticated(false);
+      setError('Network error during authentication');
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('❌ Auth check error:', error);
+  };
+
+  // Login function
+  const login = async (username, password) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('🔐 Login attempt to:', `${API_URL}/api/auth/login`);
+      
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        console.log('✅ Login successful');
+        localStorage.setItem('authToken', data.token);
+        setUser(data.user);
+        setIsAuthenticated(true);
+        setError(null);
+        return { success: true };
+      } else {
+        console.log('❌ Login failed:', data.message);
+        setError(data.message || 'Login failed');
+        return { success: false, message: data.message || 'Login failed' };
+      }
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      const errorMessage = 'Network error. Please check your connection and try again.';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Logout function
+  const logout = () => {
+    console.log('🚪 User logging out');
     localStorage.removeItem('authToken');
     setUser(null);
     setIsAuthenticated(false);
-  } finally {
-    setLoading(false);
-  }
-};
-
-    checkAuth();
-  }, []);
-
-  const login = async (username, password) => {
-  try {
-    setLoading(true);
-    
-    // ✅ Use consistent API URL logic
-    const apiUrl = process.env.REACT_APP_API_URL || 'https://order-management-fbre.onrender.com';
-    console.log('🔐 Login attempt to:', `${apiUrl}/api/auth/login`);
-    
-    const response = await fetch(`${apiUrl}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
-
-    const data = await response.json();
-    
-    if (response.ok) {
-      console.log('✅ Login successful');
-      localStorage.setItem('authToken', data.token);
-      setUser(data.user);
-      setIsAuthenticated(true);
-      return { success: true };
-    } else {
-      console.log('❌ Login failed:', data.message);
-      return { success: false, message: data.message || 'Login failed' };
-    }
-  } catch (error) {
-    console.error('❌ Login error:', error);
-    return { success: false, message: 'Network error. Please try again.' };
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const logout = () => {
-    localStorage.removeItem('authToken');
-    setUser(null);
     setError(null);
   };
 
+  // Check auth on component mount
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
   const value = {
     user,
+    isAuthenticated, // ✅ ADDED: Now properly included
     loading,
     error,
     login,
     logout,
+    checkAuth,
     fetchWithAuth,
     API_URL
   };
