@@ -91,17 +91,21 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// ✅ GET /api/auth/me (protected)
-router.get("/me", authenticateToken, async (req, res) => {
+// GET /api/auth/me - Verify token and return user data
+router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    // The authenticateToken middleware should populate req.user
+    if (!req.user) {
+      return res.status(401).json({ message: 'Invalid token' });
     }
-    res.status(200).json(user);
-  } catch (err) {
-    console.error("Fetch Me Error:", err);
-    res.status(500).json({ message: "Internal server error" });
+    
+    // Return user data (exclude sensitive info)
+    const { password, ...userWithoutPassword } = req.user;
+    res.json(userWithoutPassword);
+    
+  } catch (error) {
+    console.error('Auth verification error:', error);
+    res.status(500).json({ message: 'Server error during authentication verification' });
   }
 });
 
